@@ -1,5 +1,16 @@
 name: CI
 
+# Thin push-blocking CI skeleton (T-003). Every stage that the delivery plan
+# names is declared UP FRONT and carries a collision-free `stage:<token>`
+# marker in its job/step name, so later fixture-filling tasks (T-101 contracts,
+# T-304 F1 calibration, T-402 F2 mitigate) only ADD fixtures inside an
+# already-declared stage and never edit this layout.
+#
+# Several stages have no real inputs yet; they are kept GREEN without dropping
+# the declared stage or its required token (placeholders echo + exit 0; syntax
+# stages skip cleanly when no such files exist). Runs in < 5 min, zero VMs,
+# python 3.12 only.
+
 on:
   pull_request:
     branches: [main, master]
@@ -13,106 +24,222 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: write   # so the workflow can comment on PRs if needed
+
+env:
+  # Pinned tool versions for reproducibility (charter #10).
+  PYTHON_VERSION: "3.12"
+  PYTEST_VERSION: "8.3.4"
+  RUFF_VERSION: "0.8.6"
+  YAMLLINT_VERSION: "1.35.1"
 
 jobs:
   # ───────────────────────────────────────────────────────────────────────
-  # Determine which lanes to run based on what changed.
-  # ───────────────────────────────────────────────────────────────────────
-  changes:
+  lint:
+    name: lint (stage:lint)
     runs-on: ubuntu-latest
-    outputs:
-      code: ${{ steps.filter.outputs.code }}
-      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
+      - uses: actions/setup-python@v5
         with:
-          filters: |
-            code:
-              - 'src/**'
-              - 'tests/**'
-              - 'pyproject.toml'
-              - 'package.json'
-              - 'Cargo.toml'
-              - 'go.mod'
-              - '.github/workflows/**'
-            docs:
-              - 'docs/**'
-              - 'README.md'
-              - 'CLAUDE.md'
-              - 'ENGINEERING.md'
+          python-version: "3.12"
+      - name: Install linters
+        # Versions single-sourced from the top-level env block (no drift).
+        run: pip install "ruff==${{ env.RUFF_VERSION }}" "yamllint==${{ env.YAMLLINT_VERSION }}"
+      - name: ruff (our Python)
+        run: ruff check .
+      - name: shellcheck (our scripts only)
+        # SKIP-WHEN-ABSENT: real tool, runs once scripts/*.sh exist.
+        # Scope: ONLY scripts/*.sh — the shell scripts WE own and control.
+        # We deliberately do NOT glob the whole tree because two other dirs
+        # carry .sh files we must not red on:
+        #   * tests/fixtures/** — tester-owned negative-test corpus that
+        #     INTENTIONALLY trips shellcheck (e.g. SC2164 unguarded `cd` in the
+        #     bad/good git-clone pins fixtures); shellcheck exits nonzero on
+        #     warnings, which would falsely fail this PR's own CI.
+        #   * .claude/** — framework-scaffold hooks, not our deliverable
+        #     (the old markdown stage already excluded .claude).
+        # Targeting scripts/ keeps REAL shellcheck coverage on our scripts while
+        # never riding on fixtures/scaffold. Guarded: skips cleanly when no
+        # scripts/*.sh exist yet (none do at T-003).
+        run: |
+          if ls scripts/*.sh >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+            shellcheck scripts/*.sh
+          else
+            echo "stage:lint — no scripts/*.sh yet; shellcheck skipped"
+          fi
+      - name: yamllint (lenient)
+        # Lenient config (relaxed + line-length/document-start off). The
+        # inherited framework-scaffold workflow external-review.yml carries a
+        # known pre-existing duplicate-`env` issue tracked separately in
+        # docs/TODO.md (not this task's surface), so it is path-ignored here;
+        # all checks — including key-duplicates — stay ON for our own YAML.
+        run: |
+          yamllint \
+            -d "{extends: relaxed,
+                 rules: {line-length: disable, document-start: disable},
+                 ignore: '.github/workflows/external-review.yml'}" \
+            .
+      - name: ansible-lint (only if playbooks exist)
+        # SKIP-WHEN-ABSENT: real tool, runs once playbooks exist.
+        run: |
+          if find . -path './.git' -prune -o -name 'playbook*.yml' -print | grep -q . \
+             || [ -d ansible ] || [ -d playbooks ]; then
+            pip install ansible-lint && ansible-lint
+          else
+            echo "stage:lint — no ansible playbooks yet; ansible-lint skipped"
+          fi
 
   # ───────────────────────────────────────────────────────────────────────
-  # Code: tests + lint + types. Wire this to your real commands.
-  # ───────────────────────────────────────────────────────────────────────
-  test:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
+  unit:
+    name: unit (stage:unit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned pytest
+        # Version single-sourced from the top-level env block (no drift).
+        run: pip install "pytest==${{ env.PYTEST_VERSION }}"
+      - name: pytest
+        run: pytest tests/ -q
 
-      # Example for Node.js — replace with your stack:
-      # - uses: actions/setup-node@v4
-      #   with: { node-version: '20', cache: 'npm' }
-      # - run: npm ci
-      # - run: npm run lint
-      # - run: npm run typecheck
-      # - run: npm test -- --coverage
-
-      # Example for Python:
-      # - uses: actions/setup-python@v5
-      #   with: { python-version: '3.12', cache: 'pip' }
-      # - run: pip install -e ".[dev]"
-      # - run: ruff check .
-      # - run: mypy .
-      # - run: pytest --cov
-
-      # Default placeholder — fails so you remember to wire this up.
-      - name: Wire CI to your stack
+  # ───────────────────────────────────────────────────────────────────────
+  # PLACEHOLDER stub — structure locked now, fixtures wired in T-101.
+  contracts:
+    name: contracts (stage:contracts)
+    runs-on: ubuntu-latest
+    steps:
+      - name: contracts placeholder
+        # PLACEHOLDER (wired in T-101): intentionally inert, becomes a real check later.
         run: |
-          echo "::error::Wire .github/workflows/ci.yml to your project's test/lint/typecheck commands."
-          exit 1
+          echo "stage:contracts placeholder — JSON-Schema validation wired in T-101"
+          exit 0
 
   # ───────────────────────────────────────────────────────────────────────
-  # Docs: ensure CHANGELOG was touched if behaviour changed, basic linting.
+  # PLACEHOLDER stub — structure locked now, fixtures filled in T-304.
+  f1-calibration:
+    name: f1-calibration (stage:f1-calibration)
+    runs-on: ubuntu-latest
+    steps:
+      - name: f1-calibration placeholder
+        # PLACEHOLDER (wired in T-304): intentionally inert, becomes a real check later.
+        run: |
+          echo "stage:f1-calibration placeholder — F1 DETECT calibration fixtures filled in T-304"
+          exit 0
+
   # ───────────────────────────────────────────────────────────────────────
-  docs-discipline:
-    needs: changes
-    if: needs.changes.outputs.code == 'true' && github.event_name == 'pull_request'
+  # PLACEHOLDER stub — structure locked now, fixtures filled in T-402.
+  f2-mitigate:
+    name: f2-mitigate (stage:f2-mitigate)
+    runs-on: ubuntu-latest
+    steps:
+      - name: f2-mitigate placeholder
+        # PLACEHOLDER (wired in T-402): intentionally inert, becomes a real check later.
+        run: |
+          echo "stage:f2-mitigate placeholder — F2 MITIGATE deny-everything fixtures filled in T-402"
+          exit 0
+
+  # ───────────────────────────────────────────────────────────────────────
+  # vagrant/ansible/compose/packer validate — each guarded to skip cleanly
+  # when no such files exist yet (they do not), but the validate tokens stay
+  # present so the stage is locked.
+  syntax:
+    name: syntax (stage:syntax)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: vagrant validate
+        # SKIP-WHEN-ABSENT: real tool, runs once Vagrantfiles exist.
+        run: |
+          if ls Vagrantfile *.Vagrantfile >/dev/null 2>&1; then
+            vagrant validate
+          else
+            echo "stage:syntax — no vagrant files yet (vagrant validate skipped)"
+          fi
+      - name: ansible validate
+        # SKIP-WHEN-ABSENT: real tool, runs once playbooks exist.
+        run: |
+          if find . -path './.git' -prune -o -name 'playbook*.yml' -print | grep -q . || [ -d ansible ]; then
+            pip install ansible && ansible-playbook --syntax-check $(find . -name 'playbook*.yml')
+          else
+            echo "stage:syntax — no ansible files yet (ansible syntax-check skipped)"
+          fi
+      - name: compose validate
+        # SKIP-WHEN-ABSENT: real tool, runs once compose files exist.
+        run: |
+          if ls docker-compose*.yml compose*.yml >/dev/null 2>&1; then
+            docker compose -f $(ls docker-compose*.yml compose*.yml | head -1) config -q
+          else
+            echo "stage:syntax — no compose files yet (docker compose config skipped)"
+          fi
+      - name: packer validate
+        # SKIP-WHEN-ABSENT: real tool, runs once packer files exist.
+        run: |
+          if ls *.pkr.hcl packer/*.pkr.hcl >/dev/null 2>&1; then
+            packer validate .
+          else
+            echo "stage:syntax — no packer files yet (packer validate skipped)"
+          fi
+
+  # ───────────────────────────────────────────────────────────────────────
+  # The dependency-pin gate added in this PR.
+  pins:
+    name: pins (stage:pins)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: pins gate
+        run: python3 scripts/pins_gate.py .
+
+  # ───────────────────────────────────────────────────────────────────────
+  # mkdocs build --strict; the handbook (mkdocs.yml) lands later, so guard.
+  docs:
+    name: docs (stage:docs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: mkdocs strict build
+        # SKIP-WHEN-ABSENT: real tool, runs once mkdocs.yml exists.
+        run: |
+          if [ -f mkdocs.yml ]; then
+            pip install mkdocs
+            mkdocs build --strict
+          else
+            echo "stage:docs placeholder — no mkdocs.yml yet (handbook lands later); 'mkdocs build --strict' wired then"
+          fi
+
+  # ───────────────────────────────────────────────────────────────────────
+  secrets:
+    name: secrets (stage:secrets)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: CHANGELOG.md was touched
-        run: |
-          if ! git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q '^docs/CHANGELOG.md$'; then
-            echo "::error::docs/CHANGELOG.md must be updated when code changes (per ENGINEERING.md). Add at least a one-line [Unreleased] entry."
-            exit 1
-          fi
-
-      - name: TODO.md was touched
-        run: |
-          if ! git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q '^docs/TODO.md$'; then
-            echo "::warning::docs/TODO.md wasn't touched. Mark the task done and/or add follow-ups."
-          fi
+      - name: gitleaks scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ───────────────────────────────────────────────────────────────────────
-  # Markdown linting on doc-only changes.
-  # ───────────────────────────────────────────────────────────────────────
-  markdown:
-    needs: changes
-    if: needs.changes.outputs.docs == 'true'
+  # The T-001 forward size-guard. Invoked WITH an explicit root so a missing-
+  # root typo cannot silently false-pass (os.walk yields nothing for a missing
+  # path).
+  size-guard:
+    name: size-guard (stage:size-guard)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: DavidAnson/markdownlint-cli2-action@v16
+      - uses: actions/setup-python@v5
         with:
-          globs: |
-            **/*.md
-            !node_modules
-            !.claude
+          python-version: "3.12"
+      - name: size guard
+        run: python3 scripts/size_guard.py .

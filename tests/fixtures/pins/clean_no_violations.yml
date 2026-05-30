@@ -1,0 +1,11 @@
+# Clean fixture: a config with NO pin anti-patterns at all.
+# Used to prove the gate produces ZERO violations on a properly pinned tree.
+services:
+  web:
+    image: nginx:1.27.3
+    restart: unless-stopped
+  db:
+    image: postgres@sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+networks:
+  lab:
+    driver: bridge

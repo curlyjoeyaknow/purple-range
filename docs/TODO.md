@@ -136,7 +136,15 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 - Effort: M
 - Worktree-safe with: T-002, T-004, T-005.
 - Agent: implementer
-- Status: blocked-on-T-001
+- Status: DONE (PR #3) — `scripts/pins_gate.py` + `.github/workflows/ci.yml`;
+  56 tests green (17 size-guard + 20 pins + 19 CI structure), ruff clean,
+  `pins_gate .`/`size_guard .` exit 0. All ten stages declared with
+  `stage:<token>` markers; contracts/f1-calibration/f2-mitigate are green no-op
+  placeholders (wired in T-101/T-304/T-402); syntax/docs guarded to skip cleanly
+  until inputs exist; size-guard invoked with explicit `.` root (closes the T-001
+  missing-root false-pass); tool versions single-sourced from the `env:` block.
+  reviewer: CHANGES-REQUESTED (shellcheck-on-fixtures red + `fixtures` SKIP_DIRS
+  hole) → both fixed; external-reviewer fresh pass → F-003/F-004/F-005 logged.
 
 ### T-004  `lab` CLI scaffold + ValidationEvent ledger skeleton      [BLOCKER]
 - Depends on: T-001
@@ -927,6 +935,33 @@ T-403**); T-602 inherits via T-403.
   on the Q-006 benign baseline.
   - Source: RED-TEAM.md 2026-05-30, F1 residual. Severity: 🟠 — accepted.
   - Trigger: a calibration fixture is found to pass a bad rule, or Q-006 finalized.
+- [ ] **F-002 — duplicate `env:` key in `.github/workflows/external-review.yml`.**
+  The "Post review as PR comment" step declares `env:` twice (~L118 and ~L131);
+  invalid YAML that GitHub Actions would reject. Found while wiring the T-003
+  lint stage's yamllint; out of T-003 scope, so the lint stage path-ignores that
+  framework-scaffold file for now. Fix: merge the two `env:` blocks into one.
+  - Source: T-003 implementation, 2026-05-31. Severity: 🟠 — pre-existing, not blocking T-003.
+- [ ] **F-003 — pins-gate `unpinned-box-version` rule is file-granular, not block-granular.**
+  `_BOX_VERSION_RE = (box_version|version)\b` suppresses ALL box findings in a file
+  if ANY line contains a bare `version` token (e.g. a compose `version: "3.8"` or an
+  unrelated `api_version`), so a genuinely unpinned `config.vm.box` in the same file
+  can pass green. Low real-world risk for our Vagrantfiles today, but a false-negative.
+  Fix: scope the `version` pin to the same box block/stanza, not the whole file —
+  update `tests/test_pins_gate.py` contract first (tester), then the gate.
+  - Source: T-003 external review, 2026-05-31. Severity: 🟡 — accepted; harden before M2 LabProvider/Vagrant work lands real Vagrantfiles.
+- [ ] **F-004 — pins-gate has no rule for unpinned GitHub Actions `uses:` refs.**
+  The gate enforces docker/box/git-clone pins (per ARCHITECTURE.md:553) but is blind
+  to `uses: org/action@v4` floating-tag refs — and `ci.yml` itself floats `@v4/@v5/@v2`.
+  The locked contract didn't include action refs; this is a deliberate scope addition.
+  Fix: add a `unpinned-action-ref` rule (require `@<40-hex-sha>`), then SHA-pin the
+  workflow's own actions. Pair with the charter-#10 reproducibility hardening pass.
+  - Source: T-003 external review, 2026-05-31. Severity: 🟡 — accepted; do alongside SHA-pinning hardening.
+- [ ] **F-005 — `PYTHON_VERSION` env var declared but unused in `ci.yml`.**
+  `actions/setup-python` hardcodes literal `3.12` because the T-003 structure test
+  (`test_matrix_pins_python_312`) asserts the literal. Harmless, but a dangling decl.
+  Fix: when the structure test is revised, either reference `${{ env.PYTHON_VERSION }}`
+  + assert on the env value, or drop the unused var.
+  - Source: T-003 polish, 2026-05-31. Severity: 🟢 — cosmetic.
 
 ## Open questions (decisions still needed before/within the graph)
 
