@@ -1,0 +1,4 @@
+# Claude Code runtime state (do not commit)
+.claude/state/
+.claude/logs/
+.claude/backups/

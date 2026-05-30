@@ -1,0 +1,133 @@
+name: External Review
+
+# Fresh-context AI review on every PR. Posts the review as a PR comment.
+# Requires the ANTHROPIC_API_KEY repo secret. Without it, the workflow
+# falls back to posting a static review checklist for a human.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  external-review:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff and description
+        id: pr
+        run: |
+          # Limit diff size to avoid huge prompts.
+          git diff origin/${{ github.base_ref }}...HEAD \
+            -- ':(exclude)*.lock' ':(exclude)*-lock.json' ':(exclude)pnpm-lock.yaml' \
+            | head -c 200000 > /tmp/diff.txt
+          echo "diff_path=/tmp/diff.txt" >> "$GITHUB_OUTPUT"
+
+          # Save the PR description.
+          jq -r '.pull_request.body // ""' "$GITHUB_EVENT_PATH" > /tmp/pr-body.txt
+          echo "body_path=/tmp/pr-body.txt" >> "$GITHUB_OUTPUT"
+
+      - name: Run external review (Anthropic API)
+        if: env.ANTHROPIC_API_KEY != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+
+          DIFF=$(cat /tmp/diff.txt)
+          BODY=$(cat /tmp/pr-body.txt)
+
+          # Build the request. Keep the system prompt aligned with
+          # .claude/agents/external-reviewer.md.
+          SYSTEM_PROMPT=$(cat <<'EOF'
+          You are an external reviewer. You see ONLY the diff and the PR
+          description below. You have no other project context.
+
+          Produce the report in this exact structure:
+
+          ## What I think this change does (from the diff alone)
+          ## What I had to guess to understand it
+          ## Naming / readability concerns
+          ## Leaky abstractions or hidden context
+          ## Mismatch between PR description and diff
+          ## If I had to maintain this in 6 months
+
+          Be honest about what you couldn't understand. Don't pretend to be
+          an outsider while smuggling in project knowledge. If you didn't
+          understand something, say so — that IS the finding.
+          EOF
+          )
+
+          # Quote-safe JSON body.
+          jq -n \
+            --arg model "${ANTHROPIC_MODEL:-claude-opus-4-7}" \
+            --arg system "$SYSTEM_PROMPT" \
+            --arg title "$PR_TITLE" \
+            --arg body "$BODY" \
+            --arg diff "$DIFF" \
+            '{
+              model: $model,
+              max_tokens: 4096,
+              system: $system,
+              messages: [
+                {
+                  role: "user",
+                  content: "PR Title: \($title)\n\nPR Description:\n\($body)\n\nDiff:\n```diff\n\($diff)\n```"
+                }
+              ]
+            }' > /tmp/req.json
+
+          curl -fsS https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d @/tmp/req.json \
+            | jq -r '.content[0].text' > /tmp/review.md
+
+      - name: Fallback — post review checklist (no API key)
+        if: env.ANTHROPIC_API_KEY == ''
+        run: |
+          cat > /tmp/review.md <<'EOF'
+          ## External review checklist (no API key configured)
+
+          A human (or `/external-check` in a fresh Claude session) should
+          run through this PR with fresh eyes:
+
+          - [ ] What I think this change does, from the diff alone:
+          - [ ] What I had to guess to understand it:
+          - [ ] Naming / readability concerns:
+          - [ ] Leaky abstractions or hidden context:
+          - [ ] Mismatch between PR description and diff:
+          - [ ] If I had to maintain this in 6 months, what would slow me down?
+
+          To enable automated external review, set the `ANTHROPIC_API_KEY`
+          repo secret.
+          EOF
+
+      - name: Post review as PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "# 🔍 External review (fresh-context)"
+            echo
+            cat /tmp/review.md
+            echo
+            echo "---"
+            echo "_Posted by .github/workflows/external-review.yml. See .claude/agents/external-reviewer.md for the agent spec._"
+          } > /tmp/comment.md
+
+          gh pr comment "$PR_NUMBER" --body-file /tmp/comment.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}

@@ -1,0 +1,105 @@
+{
+  "$comment": "Project Claude Code settings for the dev-bootstrap framework. Wires the context guard (statusline monitor + PreCompact backstop + post-compact restore + checkpoint nudge) and a permission policy tuned for autonomous execution between human-decision checkpoints. Adjust the allow/deny lists to your stack and risk tolerance.",
+
+  "statusLine": {
+    "type": "command",
+    "command": ".claude/hooks/statusline.sh"
+  },
+
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": ".claude/hooks/precompact-handoff.sh" }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact|resume",
+        "hooks": [
+          { "type": "command", "command": ".claude/hooks/session-restore.sh" }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": ".claude/hooks/checkpoint-nudge.sh" }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"$(date -u +%FT%TZ) subagent stop\" >> .claude/logs/subagents.log",
+            "async": true
+          }
+        ]
+      }
+    ]
+  },
+
+  "permissions": {
+    "$comment_allow": "Safe, routine actions the autonomous loop runs constantly. Allowing them means the framework doesn't stop to ask permission for normal work — which is the point. Tune to your stack.",
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Grep",
+      "Glob",
+      "Task",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(git push origin:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git branch:*)",
+      "Bash(git merge --no-ff:*)",
+      "Bash(git worktree add:*)",
+      "Bash(git worktree list)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git tag:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run:*)",
+      "Bash(npm ci)",
+      "Bash(pnpm test:*)",
+      "Bash(pytest:*)",
+      "Bash(ruff:*)",
+      "Bash(mypy:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(go test:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr comment:*)",
+      "Bash(gh pr view:*)"
+    ],
+
+    "$comment_ask": "Actions worth a quick confirm but not outright dangerous. Merge is HERE, not in allow: in a solo repo, auto-merge deadlocks against branch protection's required review (you can't approve your own PR), so a human (or your CI-as-approver setup) closes the loop. See FRAMEWORK.md 'The merge gate'.",
+    "ask": [
+      "Bash(gh pr merge:*)",
+      "Bash(git rebase:*)",
+      "Bash(git worktree remove:*)",
+      "Bash(npm install:*)",
+      "Bash(pip install:*)"
+    ],
+
+    "$comment_deny": "Destructive / irreversible. The framework escalates these to a human regardless.",
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean -fdx:*)",
+      "Bash(git branch -D:*)",
+      "Bash(sudo:*)"
+    ]
+  }
+}

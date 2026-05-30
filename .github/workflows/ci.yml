@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+# Cancel in-progress runs for the same PR / branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write   # so the workflow can comment on PRs if needed
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────
+  # Determine which lanes to run based on what changed.
+  # ───────────────────────────────────────────────────────────────────────
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'src/**'
+              - 'tests/**'
+              - 'pyproject.toml'
+              - 'package.json'
+              - 'Cargo.toml'
+              - 'go.mod'
+              - '.github/workflows/**'
+            docs:
+              - 'docs/**'
+              - 'README.md'
+              - 'CLAUDE.md'
+              - 'ENGINEERING.md'
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Code: tests + lint + types. Wire this to your real commands.
+  # ───────────────────────────────────────────────────────────────────────
+  test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Example for Node.js — replace with your stack:
+      # - uses: actions/setup-node@v4
+      #   with: { node-version: '20', cache: 'npm' }
+      # - run: npm ci
+      # - run: npm run lint
+      # - run: npm run typecheck
+      # - run: npm test -- --coverage
+
+      # Example for Python:
+      # - uses: actions/setup-python@v5
+      #   with: { python-version: '3.12', cache: 'pip' }
+      # - run: pip install -e ".[dev]"
+      # - run: ruff check .
+      # - run: mypy .
+      # - run: pytest --cov
+
+      # Default placeholder — fails so you remember to wire this up.
+      - name: Wire CI to your stack
+        run: |
+          echo "::error::Wire .github/workflows/ci.yml to your project's test/lint/typecheck commands."
+          exit 1
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Docs: ensure CHANGELOG was touched if behaviour changed, basic linting.
+  # ───────────────────────────────────────────────────────────────────────
+  docs-discipline:
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: CHANGELOG.md was touched
+        run: |
+          if ! git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q '^docs/CHANGELOG.md$'; then
+            echo "::error::docs/CHANGELOG.md must be updated when code changes (per ENGINEERING.md). Add at least a one-line [Unreleased] entry."
+            exit 1
+          fi
+
+      - name: TODO.md was touched
+        run: |
+          if ! git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -q '^docs/TODO.md$'; then
+            echo "::warning::docs/TODO.md wasn't touched. Mark the task done and/or add follow-ups."
+          fi
+
+  # ───────────────────────────────────────────────────────────────────────
+  # Markdown linting on doc-only changes.
+  # ───────────────────────────────────────────────────────────────────────
+  markdown:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          globs: |
+            **/*.md
+            !node_modules
+            !.claude

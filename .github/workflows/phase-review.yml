@@ -1,0 +1,164 @@
+name: Phase Review
+
+# Manually triggered comprehensive review between phases.
+# Usage: from the Actions tab → Phase Review → Run workflow → fill in the
+# phase tags or commit refs to review between.
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_ref:
+        description: "Start of phase (tag, commit SHA, or branch)"
+        required: true
+        type: string
+      to_ref:
+        description: "End of phase (default: current main)"
+        required: false
+        default: "main"
+        type: string
+      phase_name:
+        description: "Phase label for the report (e.g. 'phase-2-event-log')"
+        required: true
+        type: string
+
+permissions:
+  contents: write   # to commit the report
+  pull-requests: write
+
+jobs:
+  phase-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate refs
+        run: |
+          git rev-parse --verify "${{ inputs.from_ref }}" || { echo "::error::from_ref not found"; exit 1; }
+          git rev-parse --verify "${{ inputs.to_ref }}"   || { echo "::error::to_ref not found";   exit 1; }
+
+      - name: Compute aggregate diff and stats
+        id: stats
+        run: |
+          FROM='${{ inputs.from_ref }}'
+          TO='${{ inputs.to_ref }}'
+
+          mkdir -p /tmp/review
+          git diff "$FROM..$TO" --stat > /tmp/review/stat.txt
+          git log "$FROM..$TO" --oneline > /tmp/review/commits.txt
+          git diff "$FROM..$TO" -- ':(exclude)*.lock' ':(exclude)*-lock.json' \
+            | head -c 400000 > /tmp/review/diff.txt
+
+          echo "files_changed=$(git diff --name-only "$FROM..$TO" | wc -l)" >> "$GITHUB_OUTPUT"
+          echo "commits=$(git log --oneline "$FROM..$TO" | wc -l)"          >> "$GITHUB_OUTPUT"
+
+      - name: Spec-and-doc audit
+        run: |
+          # Mechanical checks the phase-review skill calls for.
+          {
+            echo "## Spec / doc audit"
+            echo
+            for f in docs/PRD.md docs/ARCHITECTURE.md docs/CHANGELOG.md docs/TODO.md docs/OPEN-QUESTIONS.md; do
+              if [[ -f "$f" ]]; then
+                touched=$(git diff --name-only "${{ inputs.from_ref }}..${{ inputs.to_ref }}" -- "$f" | wc -l)
+                printf -- "- %s: %s\n" "$f" "$([[ $touched -gt 0 ]] && echo 'updated' || echo 'NOT updated this phase')"
+              else
+                printf -- "- %s: MISSING\n" "$f"
+              fi
+            done
+          } > /tmp/review/audit.md
+
+      - name: Run AI-powered phase review (if API key set)
+        if: env.ANTHROPIC_API_KEY != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+        run: |
+          set -euo pipefail
+          DIFF=$(cat /tmp/review/diff.txt)
+          COMMITS=$(cat /tmp/review/commits.txt)
+          AUDIT=$(cat /tmp/review/audit.md)
+
+          SYSTEM=$(cat <<'EOF'
+          You are running a phase review per the /phase-review skill in this
+          repo. Produce three sections, each labelled clearly:
+
+          # Internal reviewer (full-context)
+          Treat the aggregate diff as a single change. Does it deliver what
+          the spec promised (read docs/PRD.md to find out)? Are ADRs honoured?
+
+          # External reviewer (fresh-context)
+          You see only the diff + commit list + audit. What would a new
+          contributor struggle with? Where is naming, context, or
+          documentation insufficient?
+
+          # Critic (state-of-system red-team)
+          Red-team the system AS IT NOW EXISTS, not the diff. What scaling
+          assumptions are now load-bearing that weren't? What's the next
+          failure mode? Where has the contract surface grown without anyone
+          noticing? Use 🔴 / 🟠 / 🟡 with violated-assumption + failure-mode
+          + falsifiable-test for each.
+
+          End with a GO / NO-GO / GO-WITH-FOLLOWUPS recommendation.
+          EOF
+          )
+
+          jq -n \
+            --arg model "${ANTHROPIC_MODEL:-claude-opus-4-7}" \
+            --arg system "$SYSTEM" \
+            --arg commits "$COMMITS" \
+            --arg audit "$AUDIT" \
+            --arg diff "$DIFF" \
+            '{
+              model: $model,
+              max_tokens: 8192,
+              system: $system,
+              messages: [
+                { role: "user", content: "Commits:\n\($commits)\n\nAudit:\n\($audit)\n\nDiff:\n```diff\n\($diff)\n```" }
+              ]
+            }' > /tmp/req.json
+
+          curl -fsS https://api.anthropic.com/v1/messages \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d @/tmp/req.json \
+            | jq -r '.content[0].text' > /tmp/review/ai-review.md
+
+      - name: Compose phase report
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          OUT="docs/RED-TEAM.md"
+
+          {
+            echo
+            echo "# Phase review — ${{ inputs.phase_name }} — $DATE"
+            echo
+            echo "**Range:** \`${{ inputs.from_ref }}..${{ inputs.to_ref }}\`"
+            echo "**Files changed:** ${{ steps.stats.outputs.files_changed }}  "
+            echo "**Commits:** ${{ steps.stats.outputs.commits }}"
+            echo
+            echo '## Commits in phase'
+            echo '```'
+            cat /tmp/review/commits.txt
+            echo '```'
+            echo
+            cat /tmp/review/audit.md
+            echo
+            if [[ -f /tmp/review/ai-review.md ]]; then
+              echo '## AI-powered review (reviewer + external-reviewer + critic)'
+              echo
+              cat /tmp/review/ai-review.md
+            else
+              echo '## AI-powered review'
+              echo
+              echo '_No `ANTHROPIC_API_KEY` configured — run `/phase-review` in a Claude Code session against this range to fill this section in._'
+            fi
+          } >> "$OUT"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$OUT"
+          git commit -m "phase-review: ${{ inputs.phase_name }} ($DATE)"
+          git push
