@@ -13,7 +13,9 @@ Findings use the critic's severity scale:
 Related docs: [`docs/PRD.md`](PRD.md) · [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) ·
 [`docs/ADR/0001-manifest-oracle-event-sourced-scoring.md`](ADR/0001-manifest-oracle-event-sourced-scoring.md) ·
 [`docs/BRAINSTORM.md`](BRAINSTORM.md) · [`docs/OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md) ·
-[`docs/TODO.md`](TODO.md)
+[`docs/TODO.md`](TODO.md) · [`docs/DELIVERY-PLAN.md`](DELIVERY-PLAN.md)
+(the hostile-review gates A–D in DELIVERY-PLAN exist to keep the FATAL findings
+F1/F2/F3 below closed).
 
 ---
 

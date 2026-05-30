@@ -35,6 +35,8 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
   three true parallel streams after the M1a contract-lock blocker (S1 detection,
   S2 threat-actor skeleton, S3 containment core); four clean-room hostile-review
   gates A–D. Cross-linked TODO ↔ DELIVERY-PLAN ↔ ARCHITECTURE ↔ RED-TEAM.
+- infra: published repo (public) + solo branch protection; refreshed handoff for
+  execution phase (2026-05-31).
 
 ### Changed
 - Containment model hardened (critic F3): host-side nftables forward-drop as the
@@ -63,5 +65,5 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
   PRD + ARCHITECTURE + ADR-0001, critic red-team + folded fixes. Planning
   complete; awaiting architecture sign-off before build.
 
-[Unreleased]: https://github.com/memeworldorder2024/purple-range/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/memeworldorder2024/purple-range/releases/tag/v0.1.0
+[Unreleased]: https://github.com/curlyjoeyaknow/purple-range/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/curlyjoeyaknow/purple-range/releases/tag/v0.1.0
