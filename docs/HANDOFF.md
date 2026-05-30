@@ -1,10 +1,10 @@
-# HANDOFF — 2026-05-31 (pre-build seam, execution about to start)
+# HANDOFF — 2026-05-31 (M0 in progress — 2 of 5 blockers merged)
 
 > Written by `docs-keeper`. Resume `/deliver` from "Next concrete step" with zero momentum lost.
 
 ## Current state in one paragraph
 
-Purple Range is a clean rebuild of the messy `/home/memez/cyber-range` (READ-ONLY reference) into a purple-team CTF/lab platform with 3-pillar scoring (ATTACK → DETECT → MITIGATE). **The ENTIRE pre-build pipeline is COMPLETE:** society-of-minds ✔, `/plan` + architecture sign-off ✔, `/forge-agents` (3 specialists) ✔ + owner-approved, `/decompose` ✔ (30-task graph + `docs/DELIVERY-PLAN.md`, `plan-critic` validated, 4 clean-room gates designated) ✔ + owner-confirmed. **GitHub infra is DONE:** public repo `github.com/curlyjoeyaknow/purple-range`, `main` branch-protected in **SOLO mode** (0 approvals, linear history, conversation resolution, no force-push, **NO required status checks yet** — add real check names after the CI workflow exists at T-003). Account: `curlyjoeyaknow`. The repo was made **PUBLIC at the owner's explicit choice** (was private; branch protection needs Pro for private repos). **No product code has been written yet** — next action is autonomous EXECUTE-phase build.
+Purple Range is a clean rebuild of the messy `/home/memez/cyber-range` (READ-ONLY reference) into a purple-team CTF/lab platform with 3-pillar scoring (ATTACK → DETECT → MITIGATE). Pre-build pipeline COMPLETE (brainstorm/plan/arch-signoff/forge/decompose). **EXECUTE phase is UNDERWAY — M0 is 2 of 5 blockers done and MERGED to `main`:** **T-001** (PR #2, `b072ad6`) — `scripts/size_guard.py` + bloat-prevention `.gitignore`; **T-003** (PR #3, `1da6a06`) — thin push-blocking CI skeleton (`.github/workflows/ci.yml`, 10 stages) + `scripts/pins_gate.py`. **CI is now REAL and self-green** (all 10 stages passed on PR #3's own run), and `main` branch protection has been **re-wired to REQUIRE all 10 checks** (solo mode, 0 approvals). Account `curlyjoeyaknow`; repo PUBLIC. Test suite: 56 tests (17 size-guard + 20 pins + 19 CI-structure), all green; run via a throwaway venv (`python3 -m venv /tmp/x && /tmp/x/bin/pip install pytest ruff`) — pytest/ruff are NOT yet installed on the host (pinned in CI; host dep manifest is T-103).
 
 ## Workspace topology (KEEP STRAIGHT — do not cross-contaminate)
 
@@ -16,29 +16,26 @@ Purple Range is a clean rebuild of the messy `/home/memez/cyber-range` (READ-ONL
 
 ## What I was doing when I stopped
 
-- **Task:** Pre-build seam — pipeline complete, GitHub infra stood up, refreshing handoff before EXECUTE begins.
-- **Branch:** `main` (protected — no further direct pushes).
-- **Repo:** `/home/memez/purple-range`, remote `origin` → `https://github.com/curlyjoeyaknow/purple-range.git` (PUBLIC).
+- **Task:** Completed T-001 + T-003 (both merged), wired branch protection to require the 10 CI checks, refreshed this handoff at the M0 mid-phase seam.
+- **Branch:** `main` (protected — PR-per-task, NO direct pushes; even admin is blocked, `enforce_admins: true`).
+- **Repo:** `/home/memez/purple-range`, remote `origin` → `https://github.com/curlyjoeyaknow/purple-range.git` (PUBLIC). Working tree CLEAN, `main` synced.
 - **Worktree:** none.
-- **File / line, mid-edit:** none — only `docs/RED-TEAM.md` shows uncommitted local edits at handoff write time.
-- **Last actions:** `/forge-agents`, `/decompose`, GitHub publish + branch protection (solo mode).
+- **In flight:** nothing — no uncommitted product code, no running subagents.
+- **Note:** this SESSION runs from `/home/memez/dev-bootstrap`, so the Task tool only resolves the GENERIC agent roster — the forged specialists in `purple-range/.claude/agents/` (lab-orchestration-engineer, detection-engineer, adversary-emulation-engineer) are NOT available as `subagent_type` here. T-001/T-003 were repo/CI tooling with no domain depth, so generic `implementer` was correct. Before a task that needs real specialist depth (e.g. M2 T-201 LabProvider Vagrant/VBox, M3 detection, M4 threat-actor), either run the session from inside `purple-range` or pass the forged agent's `.md` as context to a generic agent.
 
 ## Next concrete step
 
-**BEGIN AUTONOMOUS EXECUTION of M0 then M1 on the critical path, BOUND BY `docs/DELIVERY-PLAN.md`.**
+**CONTINUE M0, then M1a (GATE A), BOUND BY `docs/DELIVERY-PLAN.md`.** Critical path: ~~T-001~~ → ~~T-003~~ → **T-101** → T-110 → T-111 → T-201 → T-202 → T-203 (MVP exit).
 
-Critical path: **T-001 → T-003 → T-101 → T-110 → T-111 → T-201 → T-202 → T-203 (MVP exit).**
+Remaining M0 blockers (all now unblocked by T-001/T-003; file-disjoint, worktree-safe with each other):
+- **T-002** `scripts/fetch-deps.sh` — clone each dep at its PINNED ref + verify SHA256 into gitignored `/mnt/data/.../vendor/`; idempotent. Tester writes `test_fetch_deps_rejects_checksum_mismatch` + `test_fetch_deps_idempotent` vs a fake fetch target first. Pins live in ARCHITECTURE.md "Pinned versions" (Vulhub `d277a86…`, ART `daee1d5…`, GOAD `v3.0.0` commit-pin, SecGen TBD Q-011).
+- **T-004** `lab` CLI scaffold — FULL argparse dispatch table locked up front (6 top-level: `up|down|reset|validate|status|panic` + stream sub-verbs `detection onboard`, `threat-actor run`, `isolation arm|disarm`) so S1/S2/S3 only fill bodies later; `ValidationEvent(version:1)` skeleton + JSONL ledger writer. Sits over `LabProvider` (no vendor import). Tester: `test_lab_cli_parses_all_commands` + `test_validation_ledger_appends`.
+- **T-005** `/mnt/data` storage layout + config — idempotent bootstrap creating `vendor/ boxes/ vbox/ secgen-builds/ box-cache/ work/ state/`; relocate `VAGRANT_HOME` + VBox machine folder; root stays < 50 MB. Tester: `test_storage_layout_idempotent` + `test_no_artifact_path_under_root`.
+- **T-006 / T-007** ADR-0002 (hypervisor behind LabProvider) + ADR-0005 (sequential-scope) — docs-only, PARALLEL, worktree-safe with everything.
 
-M0 first tasks:
-- repo hygiene / de-bloat
-- `scripts/fetch-deps.sh` — pinned refs + checksums into gitignored `/mnt/data` `vendor/`
-- thin **CI skeleton (T-003)**: lint / unit / contracts / syntax / pins / docs / secrets / size-guard — **all stages STUBBED** so streams only fill fixtures
-- **lab CLI scaffold (T-004)**: FULL dispatch table incl. stream sub-commands
-- `/mnt/data` storage layout
+Then **T-101 = M1a CONTRACT LOCK (the big blocker that unblocks all fan-out) = GATE A** (adversarial clean-room, budget 4, MVP-blocking): the versioned contracts (VulnManifest, attack_event, DetectionRule v2, challenge_spec, event shapes incl. `scenario_aborted`) + ADR-0007 store, all ports + their FAKES. Generic implementer/tester own this.
 
-**Per-task loop:** `tester` (failing test) → `implementer`/specialist → `reviewer` → `docs-keeper`.
-**Each task** = feature branch → PR → green CI → squash-merge (main is protected; **NO direct pushes**).
-After **T-003** lands real CI, **re-run `scripts/setup-branch-protection.sh --solo --checks "<real job names>"`** to require green CI.
+**Per-task loop:** `tester` (failing test) → implementer (generic, or forged specialist when domain depth is needed) → `reviewer` → (`external-reviewer` if non-trivial) → docs note. **Each task** = feature branch → PR → green CI → squash-merge. **DONE:** branch protection already requires the 10 checks (`lint/unit/contracts/f1-calibration/f2-mitigate/syntax/pins/docs/secrets/size-guard`), so every future PR must be green.
 
 ## Workflow now (CHANGED — main is protected)
 
@@ -110,35 +107,42 @@ The manifest-as-oracle spine is the load-bearing trick that makes randomized tar
 
 Ryzen 9800X3D 8C/16T, 60GiB RAM (~55 usable for guests), bare metal, AMD-V + `/dev/kvm`. VirtualBox 7.1.18 AND libvirt available. Vagrant 2.4.3, Docker 29.5.2, podman 4.9.3, rbenv Ruby 3.2.3, Ubuntu 24.04, kernel 6.17. `/mnt/data` 2TB NVMe, 1.7TB free.
 
-## Files modified this session
+## Open followups (logged in TODO.md "Followups")
+
+- **F-002** 🟠 — duplicate `env:` key in `.github/workflows/external-review.yml` (pre-existing framework scaffold; invalid YAML; lint stage path-ignores it for now). Fix: merge the two `env:` blocks.
+- **F-003** 🟡 — pins-gate `unpinned-box-version` is file- not block-granular (any bare `version` token disarms it in-file); harden before M2 lands real Vagrantfiles.
+- **F-004** 🟡 — pins-gate has no rule for unpinned Actions `uses:` refs; `ci.yml` floats `@v4/@v5/@v2`. Add `unpinned-action-ref` + SHA-pin in a reproducibility hardening pass.
+- **F-005** 🟢 — `PYTHON_VERSION` env declared-but-unused in ci.yml (structure test asserts literal `3.12`).
+
+## Files modified this session (EXECUTE — M0 T-001 + T-003)
 
 ```
-Pipeline + infra session (no product code):
-  forge: project specialists (detection, adversary-emulation, lab-orchestration)
-  plan: /decompose task graph + DELIVERY-PLAN.md, plan-critic gates A–D
-  infra: published PUBLIC repo origin → curlyjoeyaknow/purple-range; solo branch protection on main
-  docs: this handoff refresh + CHANGELOG entry
-Working tree at write time: docs/RED-TEAM.md modified (uncommitted).
+T-001 (PR #2, b072ad6): scripts/size_guard.py, tests/test_size_guard.py, .gitignore (+ CHANGELOG/TODO)
+T-003 (PR #3, 1da6a06): scripts/pins_gate.py, ruff.toml, .github/workflows/ci.yml,
+        tests/test_pins_gate.py, tests/test_ci_workflow_structure.py, tests/fixtures/pins/* (+ CHANGELOG/TODO)
+infra: branch protection re-wired to require the 10 CI checks (solo mode)
+docs: this handoff refresh
+Working tree: CLEAN (this handoff lands via its own docs PR).
 ```
 
 ## Suggested resume command
 
 ```bash
 cd /home/memez/purple-range
-git checkout main
-git log --oneline -5   # expect 748139e plan ; 6ed5d10 forge ; 3caf450 checkpoint ; 3e8bfe4 spec ; 64038d9 scaffold
+git checkout main && git pull
+git log --oneline -4   # expect 1da6a06 T-003 (#3) ; b072ad6 T-001 (#2) ; 168482a chore (#1) ; 748139e plan
 
 claude
-> read docs/HANDOFF.md and docs/DELIVERY-PLAN.md, then BEGIN EXECUTE:
-> start M0 critical path at T-001 → T-003. Per-task: tester → implementer → reviewer → docs-keeper.
-> Each task = feature branch → PR → green CI → squash-merge (main is protected).
+> read docs/HANDOFF.md and docs/DELIVERY-PLAN.md, then CONTINUE M0:
+> next tasks T-002 (fetch-deps) / T-004 (lab CLI) / T-005 (/mnt/data) — file-disjoint, then T-101 = GATE A.
+> Per-task: tester → implementer → reviewer → docs note. Each task = branch → PR → GREEN CI (now required) → squash-merge.
 ```
 
 ## Session metadata
 
-- **Ended:** 2026-05-31 (pre-build seam — pipeline complete, infra up, execution next).
-- **Commits on main:** 5 (`64038d9`..`748139e`).
-- **Remote:** `origin` → PUBLIC `github.com/curlyjoeyaknow/purple-range`; `main` solo-protected (no required checks yet).
-- **PRs opened/closed:** none yet (execution about to start; PR-per-task from here).
-- **ADRs:** ADR-0001 landed; 0002–0007 reserved/in-flight (store ADR renumbered 0005→0007).
-- **`/deliver` position:** brainstorm ✔ · `/plan` ✔ · arch sign-off ✔ · `/forge-agents` ✔ · `/decompose` ✔ · GitHub infra ✔ · **next: EXECUTE M0→M1 (T-001→T-003→…→T-203).**
+- **Updated:** 2026-05-31 (M0 mid-phase seam — T-001 + T-003 merged, CI live, protection requires 10 checks).
+- **Commits on main:** 7 (`64038d9`..`1da6a06`).
+- **Remote:** `origin` → PUBLIC `github.com/curlyjoeyaknow/purple-range`; `main` solo-protected, **10 required status checks now enforced**.
+- **PRs:** #1 (handoff), #2 (T-001), #3 (T-003) merged; handoff-refresh PR pending.
+- **ADRs:** ADR-0001 landed; 0002–0007 reserved/in-flight (store ADR renumbered 0005→0007); T-006/T-007 write 0002/0005 in M0.
+- **`/deliver` position:** pipeline ✔ · EXECUTE underway — **M0 2/5 blockers merged; next T-002/T-004/T-005 → T-101 (GATE A) → M1b → M2 (MVP exit T-203).**
