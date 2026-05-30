@@ -79,7 +79,10 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 
 ---
 
-## M0 — Repo hygiene + bootstrap
+## M0 — Repo hygiene + bootstrap  ✅ M0 COMPLETE (2026-05-31)
+
+> All 7 M0 tasks merged to `main` (5 code blockers + 2 ADRs); 133 tests green;
+> CI live with 10 required checks. Next: T-101 = M1a contract lock = GATE A.
 
 ### T-001  De-bloat the tracked tree (6.2 GB → < 50 MB)            [BLOCKER]
 - Depends on: none
@@ -214,7 +217,11 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 - Effort: S
 - Worktree-safe with: all M0 code tasks, T-007.
 - Agent: architect
-- Status: ready
+- Status: DONE (PR #8) — `docs/ADR/0002-hypervisor-behind-labprovider.md`
+  (status accepted, 2026-05-31); four-section template; names the `LabProvider`
+  port methods (`bring_up/tear_down/snapshot/restore/status`) + the base-snapshot
+  rule (VirtualBox-now / libvirt-deferred / DockerCompose). Finalize/confirm at
+  M2 (T-201). docs gate green.
 
 ### T-007  ADR-0005 — Sequential / scenario-scoped scope             [PARALLEL]
 - Depends on: none (write at M0)
@@ -226,7 +233,10 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 - Effort: S
 - Worktree-safe with: all M0 code tasks, T-006.
 - Agent: architect
-- Status: ready
+- Status: DONE (PR #8) — `docs/ADR/0005-sequential-scenario-scoped-scope.md`
+  (status accepted, 2026-05-31); four-section template; records why simultaneous
+  all-phase boot is out of scope and how the adjacent-pair model satisfies
+  "phases inter-communicate" under the RAM ceiling. docs gate green.
 
 ---
 

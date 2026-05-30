@@ -12,6 +12,19 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
 ## [Unreleased]
 
 ### Added
+- **M0 milestone complete (2026-05-31)** — repo hygiene, push-blocking CI gate,
+  `lab` CLI + ValidationEvent(v1) ledger, `/mnt/data` storage layout, and the
+  pinned dependency fetcher all merged to `main`; 133 tests green; CI live and
+  branch protection requires all 10 stage checks. Next: T-101 (M1a contract
+  lock = GATE A). See [`docs/TODO.md`](TODO.md) M0 section.
+- T-006: ADR-0002 — hypervisor/provisioner behind a `LabProvider` port
+  (VirtualBox-now / libvirt-deferred / DockerCompose); documents the port methods
+  (`bring_up/tear_down/snapshot/restore/status`) + base-snapshot rule —
+  [`docs/ADR/0002-hypervisor-behind-labprovider.md`](ADR/0002-hypervisor-behind-labprovider.md).
+- T-007: ADR-0005 — sequential / scenario-scoped scope; records why simultaneous
+  all-phase boot is out of scope and how the adjacent-pair co-residency model
+  satisfies inter-phase communication under the RAM ceiling —
+  [`docs/ADR/0005-sequential-scenario-scoped-scope.md`](ADR/0005-sequential-scenario-scoped-scope.md).
 - T-002: pinned dependency fetcher — `lab/fetch_deps.py` (stdlib-only) behind a
   `Fetcher` port (charter #3): `GitFetcher` clone+checkout adapter, a
   deterministic `tree_sha256` integrity digest (sorted `path\0sha256(bytes)`,
