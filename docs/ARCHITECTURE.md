@@ -3,7 +3,7 @@
 > Status: draft
 > Last updated: 2026-05-30
 > Tier: large
-> PRD: [`docs/PRD.md`](PRD.md) · Spine: [`docs/BRAINSTORM.md`](BRAINSTORM.md) · ADR: [`docs/ADR/0001-manifest-oracle-event-sourced-scoring.md`](ADR/0001-manifest-oracle-event-sourced-scoring.md) · Open questions: [`docs/OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md) · Red-team: [`docs/RED-TEAM.md`](RED-TEAM.md) · TODO: [`docs/TODO.md`](TODO.md)
+> PRD: [`docs/PRD.md`](PRD.md) · Spine: [`docs/BRAINSTORM.md`](BRAINSTORM.md) · ADR: [`docs/ADR/0001-manifest-oracle-event-sourced-scoring.md`](ADR/0001-manifest-oracle-event-sourced-scoring.md) · Open questions: [`docs/OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md) · Red-team: [`docs/RED-TEAM.md`](RED-TEAM.md) · TODO: [`docs/TODO.md`](TODO.md) · Delivery plan (validated + gated): [`docs/DELIVERY-PLAN.md`](DELIVERY-PLAN.md)
 
 ## High-level view
 
@@ -743,6 +743,9 @@ See `docs/ADR/`. Load-bearing and reserved:
 - **ADR-0006** *(reserved — F3)* — Containment authority: host-side-continuous
   egress tripwire as the gate; `verify_contained()` + in-guest probe demoted to
   corroboration; covers IPv6 / DNS / Docker-bridge planes.
+- **ADR-0007** *(reserved — store)* — EventStore hash-chain = tamper-EVIDENCE not
+  -resistance; SQLite-over-JSONL. Written at T-100. *(Renumbered from the
+  clashing "ADR-0005-store" per plan-critic C4; ADR-0005 is sequential-scope only.)*
 
 ## Build roster
 

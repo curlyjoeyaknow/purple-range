@@ -27,6 +27,14 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
   containment-authority redesign → ADR-0006 reserved) + 5 MATERIAL folded;
   confirming pass FIXES CONFIRMED.
 - Milestone TODO spine (M0–M8 + open ADRs) — [`docs/TODO.md`](TODO.md).
+- plan: decomposed + validated + gated (2026-05-30) — `/decompose` task graph
+  (T-001..T-803) validated by `plan-critic` and recorded as the binding
+  [`docs/DELIVERY-PLAN.md`](DELIVERY-PLAN.md): MVP critical path
+  T-001→T-003→T-101→T-110→T-111→T-201→T-202→T-203; post-MVP critical path
+  through T-501→T-502→T-503→T-403→T-602 (containment is critical, not slack);
+  three true parallel streams after the M1a contract-lock blocker (S1 detection,
+  S2 threat-actor skeleton, S3 containment core); four clean-room hostile-review
+  gates A–D. Cross-linked TODO ↔ DELIVERY-PLAN ↔ ARCHITECTURE ↔ RED-TEAM.
 
 ### Changed
 - Containment model hardened (critic F3): host-side nftables forward-drop as the
@@ -36,6 +44,15 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
   disarmed during the sanctioned provisioning window (NAT-on, Q-012) and re-armed
   before the first attack step so benign provisioning traffic never fires
   `panic()`.
+- plan-critic corrections C1–C5 folded into [`docs/TODO.md`](TODO.md): shared-infra
+  files (lab dispatch table, adapter registry, CI workflow, dependency manifest
+  T-103) carved into the M1a blocker so streams stay file-disjoint (C1); T-502/T-503
+  split into fake-driven cores (implementer) + host-serial verification tails (C2);
+  T-203 gated behind containment (`blocked-on: T-502`) with a single-point
+  fail-closed live-attack refusal in the orchestrator loop (C3); the store ADR
+  renumbered **ADR-0005-store → ADR-0007** to clear the sequential-scope clash —
+  ARCHITECTURE.md ADR list updated (C4); S3 + T-403 + T-602 re-labelled POST-MVP
+  CRITICAL PATH (not slack), full-project finish line T-602 (C5).
 
 ---
 
