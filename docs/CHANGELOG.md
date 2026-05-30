@@ -48,6 +48,45 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
   `secgen-builds/`, `box-cache/`), Python noise, and Vagrant/VirtualBox local
   dirs. (`/mnt/data` itself is an absolute host path outside the repo — no
   ignore entry needed; noted inline.)
+- T-003: thin push-blocking CI skeleton — `.github/workflows/ci.yml` declares
+  all ten stages up front, each carrying a collision-free `stage:<token>` marker
+  so later tasks only add fixtures inside an already-declared stage and never
+  edit the layout (plan-critic C1). Stages: lint (ruff/yamllint/ansible-lint +
+  shellcheck scoped to our `scripts/*.sh` only, so tester-owned
+  `tests/fixtures/**` and framework `.claude/**` shell scripts cannot redden
+  this PR's CI on SC2164), unit (pinned `pytest==8.3.4` over `tests/`),
+  contracts / f1-calibration / f2-mitigate (**declared placeholders** — green
+  no-op stubs wired later in T-101 / T-304 / T-402), syntax
+  (vagrant/ansible/compose/packer validate, each guarded to skip cleanly until
+  its inputs exist), pins, docs (`mkdocs build --strict`, guarded until
+  `mkdocs.yml` lands), secrets (`gitleaks/gitleaks-action@v2`), and size-guard.
+  Triggers on `pull_request`; python 3.12; all action + pip versions pinned.
+- T-003: `scripts/pins_gate.py` — stdlib-only dependency-pin gate (CI `pins`
+  stage). Pure `find_pin_violations()` walks an injectable root (no
+  git/network/subprocess) and flags `docker-latest` (`:latest`/untagged image
+  refs; version tag or `@sha256` digest is OK), `unpinned-box-version` (a
+  Vagrant/yaml box with no `box_version`/`version` in the same file), and
+  `bare-git-clone` (a `git clone` not pinned inline by `--branch vX.Y.Z` or by a
+  `git checkout <40-hex sha>`/`vTAG` within the next 3 non-blank lines). Scans
+  yml/yaml/Dockerfile/compose/Vagrantfile/sh and `.md` fenced code blocks only
+  (prose is never flagged); skips ONLY the root-relative path `tests/fixtures`
+  (the deliberately-bad negative-test corpus) — matched by relative path, not
+  bare dirname, so a real violation under any *other* future `fixtures` dir
+  (e.g. planned DETECT calibration fixtures) is still caught. size-guard does
+  NOT skip it (byte accounting must reflect the whole tracked tree).
+  Thin `main()` CLI exits nonzero on any violation. 20 contract tests.
+- T-003: `ruff.toml` — lint config for our tooling (py312; F/I/E/W, E501 off;
+  `F401` ignored under `tests/**` for pytest mark/fixture imports).
+- T-003: size-guard CI stage invokes `size_guard.py .` with an explicit root,
+  closing the T-001 missing-root false-pass (`os.walk` silently yields nothing
+  for a nonexistent path).
+- T-003: CI tool-version pins are single-sourced — `ruff`/`pytest`/`yamllint`
+  `pip install` steps now reference the top-level `env:` vars
+  (`${{ env.RUFF_VERSION }}` etc.) instead of re-hardcoding the strings, so a
+  bump edits one place and cannot drift. Placeholder vs skip-when-absent stages
+  now carry self-documenting inline markers (`# PLACEHOLDER (wired in T-xxx)` vs
+  `# SKIP-WHEN-ABSENT`) so a contributor copying a stage won't leave a stray
+  `exit 0` in a real check.
 
 ### Changed
 - Containment model hardened (critic F3): host-side nftables forward-drop as the

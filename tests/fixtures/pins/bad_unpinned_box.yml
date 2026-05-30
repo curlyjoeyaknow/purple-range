@@ -1,0 +1,5 @@
+# Positive fixture for the vagrant box pin rule in YAML form.
+# The box key below has no accompanying pin key in this file.
+vm:
+  box: bento/ubuntu-22.04
+  hostname: victim

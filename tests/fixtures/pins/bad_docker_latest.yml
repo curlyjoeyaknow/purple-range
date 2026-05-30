@@ -1,0 +1,10 @@
+# Positive fixture for the docker pin rule. See test docstring for the rule.
+# Offending lines below: an explicit latest tag, a bare untagged ref, and a
+# second explicit latest tag. (Comments here are kept token-free on purpose.)
+services:
+  web:
+    image: nginx:latest
+  cache:
+    image: redis
+  proxy:
+    image: traefik:latest

@@ -1,0 +1,16 @@
+# Ruff config for our Python tooling (stdlib-only project; lint-only use).
+# Pinned target version matches the CI matrix (python 3.12).
+target-version = "py312"
+
+[lint]
+# Substance over formatting: pyflakes (F), import order (I), and the
+# correctness-oriented pycodestyle checks. E501 (line length) is intentionally
+# NOT enforced — the contract tests (tester-owned, not editable here) use a
+# wider style, and line width is a formatter concern, not a correctness one.
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+# Test modules legitimately import `pytest` for marks/fixtures even when a
+# given module references it only indirectly; do not fail lint on that.
+"tests/**" = ["F401"]
