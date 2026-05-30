@@ -93,7 +93,8 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 - Effort: S
 - Worktree-safe with: T-006, T-007 (docs/ADR only).
 - Agent: lab-orchestration-engineer
-- Status: ready
+- Status: DONE (PR #2) — forward guard `scripts/size_guard.py` + `.gitignore`
+  landed; 17 contract tests green; reviewer APPROVE (no blockers).
 
 ### T-002  `scripts/fetch-deps.sh` — pinned refs + checksums         [BLOCKER]
 - Depends on: T-001
@@ -124,6 +125,11 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
   docs (`mkdocs build --strict` + link-check), secrets (gitleaks), size-guard.
   - The workflow STRUCTURE is locked here — T-304/T-402 only fill in fixtures
     inside their already-declared stage and never edit the workflow layout.
+  - **size-guard hardening (from T-001 review):** the `size-guard` stage must
+    invoke `size_guard.py` with a known-good root (`.`) OR harden `main()` to
+    exit nonzero on a nonexistent root — `os.walk` silently yields nothing for a
+    missing path, so a typo'd path is currently a quiet false-pass (green). Add
+    a test for the nonexistent-root case when wiring this stage.
 - Test plan: tester adds fixtures that each stage must reject (a `:latest` pin,
   a >5 MB blob, a leaked secret, a broken doc link) — gate must go red on each.
 - Rationale: shared-infra file locked in M1a so S1/S2/S3 stay file-disjoint (plan-critic §2).

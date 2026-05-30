@@ -2,3 +2,30 @@
 .claude/state/
 .claude/logs/
 .claude/backups/
+
+# Vendored / pinned third-party clones (fetched into /mnt/data; see T-002).
+# NOTE: /mnt/data is an absolute HOST path that lives OUTSIDE this repo, so it
+# needs no ignore entry. We ignore the in-repo equivalents only, in case a
+# fetch ever lands them under the tree by mistake.
+vendor/
+
+# In-repo equivalents of the /mnt/data storage-layout dirs (ARCHITECTURE.md
+# "/mnt/data storage layout"). Multi-GB artifacts/state must never be tracked.
+work/
+state/
+boxes/
+vbox/
+secgen-builds/
+box-cache/
+
+# Python noise
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Vagrant / VirtualBox local dirs
+.vagrant/
+*.box

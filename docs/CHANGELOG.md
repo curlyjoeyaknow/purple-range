@@ -37,6 +37,17 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
   gates A–D. Cross-linked TODO ↔ DELIVERY-PLAN ↔ ARCHITECTURE ↔ RED-TEAM.
 - infra: published repo (public) + solo branch protection; refreshed handoff for
   execution phase (2026-05-31).
+- T-001: `scripts/size_guard.py` — stdlib-only repo size-guard (the T-001 forward
+  guard, wired to CI's `size-guard` stage). Pure `find_violations()` walks the
+  tracked tree (skipping `.git`/`vendor`/`__pycache__`/`.pytest_cache`/
+  `node_modules`, never following symlinked dirs), flags `oversized-blob`
+  (> 5 MiB/file) and `total-exceeded` (> 50 MiB/tree) on a strict greater-than
+  boundary; thin `main()` CLI exits nonzero on any violation. 17 contract tests.
+- T-001: expanded `.gitignore` — `vendor/`, the in-repo equivalents of the
+  `/mnt/data` storage-layout dirs (`work/`, `state/`, `boxes/`, `vbox/`,
+  `secgen-builds/`, `box-cache/`), Python noise, and Vagrant/VirtualBox local
+  dirs. (`/mnt/data` itself is an absolute host path outside the repo — no
+  ignore entry needed; noted inline.)
 
 ### Changed
 - Containment model hardened (critic F3): host-side nftables forward-drop as the
