@@ -744,6 +744,32 @@ See `docs/ADR/`. Load-bearing and reserved:
   egress tripwire as the gate; `verify_contained()` + in-guest probe demoted to
   corroboration; covers IPv6 / DNS / Docker-bridge planes.
 
+## Build roster
+
+`/forge-agents` (2026-05-30) created three project specialists in
+`.claude/agents/`, each owning a domain the generic `implementer`/`tester`
+lack the knowledge for. The generic roster builds everything else.
+
+| Forged specialist | Owns | Milestones |
+|---|---|---|
+| `detection-engineer` | DETECT pillar — Elastic EQL/Lucene, Suricata, Zeek on Security Onion 2.4; Fleet onboarding (`OnboardSpec`); the three-window TP+FP grading oracle (skew_budget); the **F1 calibration fixtures** (correct PASSES, match-all FAILS FP, match-none FAILS TP) | **M3** (detection data-plane), **M2** (DETECT grading of web phase), **M6** (GOAD/Windows detections) |
+| `adversary-emulation-engineer` | ATTACK pillar — native playbook runner + Atomic Red Team adapter; MITRE-tagged **observed-outcome** ground-truth; the `ttp ∈ manifest` check; the **F2 MITIGATE** re-attack (`blocked` + `service_probe`) and `deny_all_ref` negative fixture. SAFE/bounded, lab-CIDR-locked | **M2** (web attacks + MITIGATE), **M4** (threat-actor runner), **M6** (GOAD/AD TTPs); **gated by M5** containment |
+| `lab-orchestration-engineer` | Provisioning + virtualization + **containment** — `LabProvider`/`IsolationProvider`/`ScenarioGenerator` ports; Vagrant/VirtualBox/Docker; per-VM snapshots; `/mnt/data` layout; GOAD-full; SecGen container; host-side nftables tripwire (PRIMARY+REAL gate) + `panic` | **M0** (provisioning scaffold, /mnt/data, fetch-deps), **M2** (Vulhub web phase), **M5** (containment hardening), **M6** (GOAD), **M7** (SecGen) |
+
+**Deliberately NOT forged** (anti-proliferation, charter):
+
+- **Scoring spine** (`core/scorer`, `core/state`, `core/contracts`, EventStore
+  + hash-chain) → generic **`implementer`** + **`tester`**. It is pure,
+  vendor-free domain logic the generic roster handles well; a specialist would
+  buy no knowledge or parallelism.
+- **Containment** → **folded into `lab-orchestration-engineer`**, not a
+  separate agent. Containment authority is host-side virtualization-adjacent
+  work (nftables on the same planes the lab provisions); splitting it would
+  fracture the locus of authority (ADR-0006).
+- **SecGen** → **folded into `lab-orchestration-engineer`**, not a separate
+  agent. It is a `ScenarioGenerator` adapter on the same pinned-toolchain /
+  `/mnt/data` build path the lab owner already manages (post-MVP, ADR-0003).
+
 ## Out-of-scope
 
 Simultaneous all-phase boot; autonomous exploit/egress selection; multi-tenant /

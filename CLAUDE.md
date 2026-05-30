@@ -99,7 +99,9 @@ of *non-negotiables*.
 | `external-reviewer` | Fresh-context readability review; sees only the diff + minimal context. |
 | `clean-room-reviewer` | Hostile, zero-context milestone gate review. Always spawned as a fresh subagent. |
 | `docs-keeper` | README, CHANGELOG, TODO, DELIVERY-PLAN, HANDOFF maintainer. |
-| *(project-forged)* | Domain specialists created by `/forge-agents` for this project's stack. |
+| `detection-engineer` *(forged)* | DETECT pillar: Elastic EQL/Lucene/Suricata/Zeek detections on Security Onion 2.4, Fleet onboarding (OnboardSpec), the three-window TP+FP grading oracle, and the F1 calibration fixtures. M3/M2/M6. |
+| `adversary-emulation-engineer` *(forged)* | ATTACK pillar: safe, bounded threat-actor runner (native + Atomic Red Team), MITRE-tagged observed-outcome ground-truth, the ttp∈manifest check, and the F2 MITIGATE re-attack/deny-everything verification. M2/M4/M6, gated by M5. |
+| `lab-orchestration-engineer` *(forged)* | Provisioning + virtualization + CONTAINMENT: LabProvider/IsolationProvider/ScenarioGenerator ports, Vagrant/VirtualBox/Docker, snapshots, /mnt/data layout, GOAD/SecGen, host nftables tripwire + panic. M0/M2/M5/M6/M7. |
 
 ## Skills (slash commands in `.claude/skills/`)
 
