@@ -110,7 +110,15 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 - Effort: M
 - Worktree-safe with: T-003, T-004, T-005.
 - Agent: lab-orchestration-engineer
-- Status: blocked-on-T-001
+- Status: DONE (PR #7) — `lab/fetch_deps.py` (Fetcher port + GitFetcher +
+  `tree_sha256` + `fetch_all` orchestrator + `load_manifest` + injectable `main`
+  with real `list`/`fetch` actions) and the thin `scripts/fetch-deps.sh` shim;
+  17 contract tests green → 133 total, ruff clean, gates pass. Pins: Vulhub/ART
+  verbatim, GOAD = v3.0.0 commit-resolved (`8c18acc…`, Q-013 resolved + backfilled
+  into ARCHITECTURE.md), SecGen pending (`pinned_commit=None`, refuses → Q-011).
+  Resolved-dep `sha256` carries a TOFU sentinel (security-aware: real mismatch
+  reads as possible tampering; first-fetch reads as "record this"). reviewer
+  APPROVE + external pass → fetch CLI wired + operator-legible messages.
 
 ### T-003  Thin push-blocking CI skeleton                            [BLOCKER]
 - Depends on: T-001

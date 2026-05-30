@@ -12,6 +12,29 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
 ## [Unreleased]
 
 ### Added
+- T-002: pinned dependency fetcher — `lab/fetch_deps.py` (stdlib-only) behind a
+  `Fetcher` port (charter #3): `GitFetcher` clone+checkout adapter, a
+  deterministic `tree_sha256` integrity digest (sorted `path\0sha256(bytes)`,
+  `.git` excluded — clone-layout-independent), and a `fetch_all` orchestrator
+  enforcing the SHA256 checksum gate (refuses + cleans up on mismatch),
+  idempotent no-op re-runs (ALREADY_PRESENT, fetcher not re-invoked), pending-pin
+  refusal (SecGen / Q-011 — never clones master), dest-under-vendor_base, and a
+  collect-all-errors fail policy (`AggregateFetchError`). `load_manifest()` holds
+  the ARCHITECTURE.md pins (Vulhub, ART, GOAD = v3.0.0 commit-resolved; SecGen
+  pending); resolved-dep digests are TOFU (trust-on-first-use) sentinels
+  recorded on first verified fetch. Thin `scripts/fetch-deps.sh` shim execs
+  `python3 -m lab.fetch_deps`. `main()` is an injectable argparse CLI with two
+  actions: `list` (default, offline-safe, creates nothing) prints the manifest;
+  `fetch` actually runs `fetch_all` (PROD defaults `GitFetcher` + the
+  StorageLayout `vendor` dir under `DEFAULT_BASE`, wired lazily inside the
+  `fetch` branch only — never at import or on `list`), printing a per-dep result
+  line (fetched / already-present / pending / first-fetch / FAILED) and exiting
+  nonzero if any dep failed. Operator-legible errors: a TOFU-sentinel mismatch
+  reads as a first-fetch "verify the upstream, then record the printed sha256"
+  prompt, while a real 64-hex mismatch reads as an alarming possible-tampering
+  signal (the two are deliberately distinct for a security tool); a pending pin
+  (SecGen) points the operator at `docs/OPEN-QUESTIONS.md` (Q-011) in plain
+  language rather than a bare lore token.
 - T-005: `/mnt/data` storage-layout bootstrap + relocation config — `lab/storage.py`
   (stdlib-only, pure `pathlib`). Computes the 7 canonical artifact subdirs
   (`vendor boxes vbox secgen-builds box-cache work state`) under a base,
