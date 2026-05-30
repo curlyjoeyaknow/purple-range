@@ -1,0 +1,14 @@
+# Negative fixture for rule `docker-latest`.
+# Every image is pinned by an explicit version tag OR a digest. The gate
+# MUST NOT flag any of these — false positives here would block every PR
+# that uses a properly pinned image.
+services:
+  web:
+    image: nginx:1.27.3
+  cache:
+    image: redis:7.4.1
+  db:
+    # digest-pinned is the strongest form and must be accepted
+    image: postgres@sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+  pinned-with-registry:
+    image: docker.io/library/alpine:3.20.3

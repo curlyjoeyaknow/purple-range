@@ -1,0 +1,6 @@
+# Negative fixture for rule `unpinned-box-version` in YAML form.
+# `box:` accompanied by a `box_version:` pin in the same file — must NOT flag.
+vm:
+  box: bento/ubuntu-22.04
+  box_version: "202407.23.0"
+  hostname: victim

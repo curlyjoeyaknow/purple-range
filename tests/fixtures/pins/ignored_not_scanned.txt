@@ -1,0 +1,3 @@
+This is a plain .txt file. It mentions image: nginx:latest and a bare
+git clone https://example.com/repo.git — but .txt is NOT in the scanned set
+(yml/yaml/Dockerfile/compose/Vagrantfile/sh/md), so the gate MUST NOT flag it.
