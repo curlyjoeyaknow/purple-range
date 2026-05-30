@@ -10,6 +10,14 @@ Unresolved decisions that block, slow, or shape the work. Maintained by the
 > Purple Range). All `[owner]` defaults below are "confirmed-by-default unless
 > vetoed" — they reflect locked-or-leaning decisions from convergence.
 
+> **2026-05-30 — critic GO-WITH-FIXES folded in.** 3 FATAL (F1 DETECT
+> grading-calibration fixture, F2 MITIGATE deny-everything fixture, F3
+> containment-authority redesign → **ADR-0006 reserved**) and 5 MATERIAL
+> (M1–M5) closed in ARCHITECTURE.md + ADR-0001. The few owner-facing residues
+> surfaced by the fixes are tracked as Q-014/Q-015/Q-016 below. Full finding
+> ledger with resolution status: [`docs/RED-TEAM.md`](RED-TEAM.md); milestone
+> spine: [`docs/TODO.md`](TODO.md).
+
 ## Active questions
 
 ### Q-002 — Accept a semi-manual Security Onion install step, or build the unattended path?
@@ -80,31 +88,44 @@ Unresolved decisions that block, slow, or shape the work. Maintained by the
 - **Type:** data
 - **Blocks:** the scoring event-log implementation; deviates from charter
   non-negotiable #4's small-tier "one JSONL file" default
-- **What we know:**
-  - Large tier has concurrent threat-actor writers + replay queries +
-    tamper-evidence needs.
+- **What we know (UPDATED 2026-05-30 per critic M3 — justification corrected):**
+  - The "concurrent writers" reason is **DROPPED**: at sequential/single-user
+    scope there is ONE logical scoring writer (the actor writes its own
+    ground-truth JSONL; the orchestrator is the sole scoring-log writer).
+  - The TRUE reasons SQLite is chosen: (1) **transactional multi-row append** so
+    a multi-event step (verification_result + score_awarded) can never leave a
+    broken hash chain; (2) **indexed `replay_from(seq)` / `verify_chain()`** over
+    a real table with a monotonic `seq` column.
+  - The hash chain is **tamper-EVIDENCE** (corruption / accidental-edit / reorder
+    tripwire), NOT tamper-RESISTANCE — the sole owner can legitimately re-fold /
+    re-chain. That is the honest property.
   - SQLite is stdlib (`sqlite3`); net add ~250–350 LOC, still stdlib-only.
-  - State remains a fold over append-only, hash-chained events either way.
 - **What we don't:** whether the owner prefers to hold the JSONL default and
-  serialize writers instead.
+  accept full-file scans + no multi-row transaction.
 - **Options on the table:**
-  - A. SQLite append-only + hash-chained — handles concurrency + replay well;
-    deviates from default.
-  - B. One JSONL file — matches the charter default; needs write serialization
-    for concurrent actors.
+  - A. SQLite append-only + hash-chained — transactional multi-row + indexed
+    replay; deviates from default. **Recommended.**
+  - B. One JSONL file — matches the charter default; no transaction boundary
+    across rows, full-file scan for replay/verify.
 - **Who needs to weigh in:** owner
 - **Decision deadline:** before the scoring-engine phase is decomposed
 - **Default if no decision by deadline:** Option A — SQLite append-only +
-  hash-chained, recorded as an ADR justifying the tier deviation.
+  hash-chained, justified (per M3) in ADR-0001 by transactional multi-row append
+  + indexed replay, NOT concurrency.
 
 ### Q-006 — What is the benign baseline source for the false-positive gate?
 
 - **Raised:** 2026-05-30 in BRAINSTORM.md (Detection grading oracle)
 - **Type:** technical
-- **Blocks:** the three-window TP+FP grading oracle (the FP half)
+- **Blocks:** the three-window TP+FP grading oracle (the FP half) AND the F1
+  calibration fixture's FP-half references (match_all_ref must FAIL the FP gate
+  against this baseline)
 - **What we know:**
   - The oracle runs the learner's detection over a recorded BENIGN baseline
     window and requires `<= max_false_positives`.
+  - The F1 calibration fixture is evaluated against this same baseline, so the
+    baseline must be stable enough that a match-everything rule reliably trips
+    the FP gate.
 - **What we don't:** whether the baseline is canned/shipped or captured live.
 - **Options on the table:**
   - A. Ship a canned baseline log/PCAP bundle — deterministic, portable; may not
@@ -114,7 +135,8 @@ Unresolved decisions that block, slow, or shape the work. Maintained by the
 - **Who needs to weigh in:** owner, with expert (detection-engineering) input
 - **Decision deadline:** before the detection grading oracle is implemented
 - **Default if no decision by deadline:** Option A — ship a canned baseline
-  bundle for determinism; revisit live capture as a v2 hardening.
+  bundle for determinism (also makes the F1 fixture deterministic in CI); revisit
+  live capture as a v2 hardening.
 
 ### Q-007 — DETECT grading: couple to a live SIEM at verify time, or to an offline-replayable log bundle?
 
@@ -125,6 +147,8 @@ Unresolved decisions that block, slow, or shape the work. Maintained by the
   - Live-SIEM-at-verify is simpler to build but couples the scorer to a running
     Security Onion at grade time.
   - Offline-replayable log bundle is more honest/portable but more build.
+  - Either way the scorer (not the adapter) owns the grading-window math incl.
+    the M2 `skew_budget` (see Q-015).
 - **What we don't:** whether portability/replay justifies the extra build now.
 - **Options on the table:**
   - A. Live-SIEM-at-verify — least build; requires SO up during grading.
@@ -142,7 +166,9 @@ Unresolved decisions that block, slow, or shape the work. Maintained by the
 - **Blocks:** scope of the first scorable challenge set
 - **What we know:**
   - SecGen gives the attack side free; the two high-value pillars
-    (detect + mitigate) oracles are MANUAL to author per vuln class.
+    (detect + mitigate) oracles are MANUAL to author per vuln class — and each
+    now also ships a CI-gated calibration/negative fixture (F1/F2), adding to the
+    per-class authoring cost.
   - Authoring all ~1000 modules' detect/mitigate oracles up front is infeasible.
 - **What we don't:** who authors the oracles, and how large the initial N is.
 - **Options on the table:**
@@ -165,6 +191,9 @@ Unresolved decisions that block, slow, or shape the work. Maintained by the
     RESOLVED (1.7 TB free on `/mnt/data` NVMe; lab artifacts stored there).
   - GOAD-full (~24–32 GB) is reachable solo; SO (16 GB) + GOAD as an adjacent
     pair ≈48 GB is tight but within ~55 GB usable; GOAD-Light is 3 VMs.
+  - `panic()` VM-pause is serial/best-effort and exceeds 1 s with GOAD-full's 5
+    VMs (m4) — containment never waits on the pause; the host nft egress-cut
+    (sub-second) is the guarantee.
 - **What we don't:** whether the owner wants the leaner footprint regardless.
 - **Options on the table:**
   - A. GOAD-full — richer AD attack surface; fits the host solo; pair is tight
@@ -175,6 +204,161 @@ Unresolved decisions that block, slow, or shape the work. Maintained by the
 - **Default if no decision by deadline:** Option A — **GOAD-full**. With Q-001
   resolved, disk is no longer a constraint and RAM is sufficient solo;
   GOAD-Light only if the owner prefers the leaner footprint.
+
+### Q-011 — Which exact SecGen commit + known-good frozen base box do we pin?
+
+- **Raised:** 2026-05-30 during `/plan` (ARCHITECTURE pinned-versions table; ADR-0001 SecGen build non-determinism)
+- **Type:** technical
+- **Blocks:** the `SecGenContainer` adapter pin (ADR-0003); reproducibility of phase-5
+- **What we know:**
+  - SecGen is a rolling repo with **no releases**; its README pins Vagrant 2.2.9
+    (Ubuntu 20.04), Ruby 3.2, Packer, ImageMagick, libvirt — to be run inside the
+    pinned OCI image so it never collides with host Vagrant 2.4.3.
+  - Build non-determinism (Risk #3): even a fixed seed reaches apt/Packer/forge,
+    so the same seed can yield a non-booting box months later unless the base box
+    and apt state are frozen/cached. Per M1 the box is **pinned-by-cached-output-
+    box** (built once, output cached, never rebuilt in normal operation), NOT
+    reproducible-by-rebuild.
+- **What we don't:** which SecGen commit builds cleanly on the pinned toolchain,
+  and which frozen base box + (optional) offline apt mirror snapshot to cache.
+- **Options on the table:**
+  - A. Pin a specific SecGen commit verified to build, plus a cached frozen base
+    box on `/mnt/data` — deterministic-by-cache, more setup.
+  - B. Track SecGen master and accept occasional rebuild breakage — less setup,
+    fails the reproducibility goal for phase-5.
+- **Who needs to weigh in:** owner
+- **Decision deadline:** before the SecGen/phase-5 generator phase is decomposed
+- **Default if no decision by deadline:** Option A — pin a verified commit + cache
+  a frozen base box; SecGen is must-have but NOT critical-path-blocking, so this
+  resolves after the Vulhub fast path proves the spine.
+
+### Q-012 — Offline apt-mirror snapshot for SecGen/victim builds, or accept live apt at provision?
+
+- **Raised:** 2026-05-30 during `/plan` (Risk #3 mitigation depth)
+- **Type:** technical
+- **Blocks:** the determinism guarantee of generated-victim builds; how "NAT-on
+  only during provision" interacts with reproducibility; **which reproducibility
+  CLAIM the SecGen section may make (M1)**
+- **What we know:**
+  - Risk #3's full mitigation calls for an "offline apt mirror snapshot" so a
+    rebuild months later resolves the same packages.
+  - Provisioning is the only sanctioned NAT-on window; a frozen mirror would let
+    even that be cut.
+  - **M1 (critic):** with the default (Option B, live apt), "reproducible-by-
+    rebuild" is FALSE and must NOT be claimed — only "pinned-by-cached-output-
+    box". Claiming rebuild-reproducibility REQUIRES Option A.
+- **What we don't:** whether the determinism payoff justifies hosting and storing
+  an apt mirror snapshot on `/mnt/data`.
+- **Options on the table:**
+  - A. Host a frozen apt mirror snapshot on `/mnt/data` — fully reproducible
+    (rebuild-reproducibility claimable), NAT-never even at provision; storage +
+    maintenance cost.
+  - B. Accept live apt during the provision NAT-on window — simpler; rebuilds may
+    drift; only the cached-output-box claim is honest.
+- **Who needs to weigh in:** owner
+- **Decision deadline:** before phase-5 (SecGen) is decomposed; lower priority for
+  the Vulhub fast path (CVE images are `@sha256`-pinned, deterministic by
+  construction)
+- **Default if no decision by deadline:** Option B for the fast path (images are
+  digest-pinned anyway), with the SecGen section claiming only "pinned-by-cached-
+  output-box" (M1); revisit Option A only if SecGen rebuild drift bites or
+  rebuild-reproducibility is ever required.
+
+### Q-013 — GOAD has no clean semver release: which commit do we pin off `v3.0.0`?
+
+- **Raised:** 2026-05-30 during `/plan` (pinned-versions lookup, charter rule 10)
+- **Type:** technical
+- **Blocks:** the GOAD/phase-4 pin; reproducibility of the AD forest
+- **What we know:**
+  - GOAD's latest "release" tag is `v3.0.0` (2024-11-29), described as a "V3 beta
+    merge into main" — development continues on `main` past the tag, so the
+    floating tag/branch is not a stable pin.
+  - Charter rule 10 requires a pinned ref, not a floating branch.
+- **What we don't:** which specific commit builds the chosen GOAD-full forest
+  cleanly on the host (VirtualBox 7.1.18 / Vagrant 2.4.3).
+- **Options on the table:**
+  - A. Pin a specific verified commit at/after `v3.0.0` — reproducible.
+  - B. Track `main` — risks drift/breakage on rebuild.
+- **Who needs to weigh in:** owner
+- **Decision deadline:** before the GOAD/phase-4 phase is decomposed
+- **Default if no decision by deadline:** Option A — pin a verified commit;
+  GOAD-full chosen (Q-010), so the pin is selected during phase-4 build-out.
+
+### Q-014 — Who authors the F1/F2 oracle fixtures, and is the calibration suite a per-challenge gate or a sampled gate?
+
+- **Raised:** 2026-05-30 (critic F1/F2 — folded into ARCHITECTURE + ADR-0001)
+- **Type:** product / process
+- **Blocks:** the contracts CI stage definition and the oracle-authoring workflow
+- **What we know:**
+  - F1 requires each DETECT oracle to ship
+    `calibration{correct_ref, match_all_ref, match_none_ref}` proving the
+    threshold discriminates (correct PASSES, match-all FAILS FP, match-none FAILS
+    TP). F2 requires each MITIGATE oracle to ship a `deny_all_ref` proving the
+    `service_probe` PASSES un-mitigated and FAILS deny-everything on the
+    functional path.
+  - These are CI-gated in the contracts stage; a challenge without passing
+    fixtures is rejected (build red).
+- **What we don't:** whether every challenge must carry its own fixtures from day
+  one, or whether a shared/templated reference set is acceptable for a family of
+  similar CVEs to reduce authoring cost.
+- **Options on the table:**
+  - A. Per-challenge mandatory fixtures — strongest honesty guarantee; highest
+    authoring cost. **Recommended (matches F1/F2 as written).**
+  - B. Templated/shared reference fixtures per vuln-family — cheaper; risks a
+    family template that does not actually discriminate for an outlier member.
+- **Who needs to weigh in:** owner (and whoever authors the oracles)
+- **Decision deadline:** before the scoring-engine / oracle-authoring phase is decomposed
+- **Default if no decision by deadline:** Option A — per-challenge mandatory
+  fixtures, consistent with F1/F2; revisit templating only if authoring cost
+  proves prohibitive after the small-N fast path.
+
+### Q-015 — Default `skew_budget_s` and the victim↔host clock-offset measurement method?
+
+- **Raised:** 2026-05-30 (critic M2 — folded into ARCHITECTURE + ADR-0001)
+- **Type:** technical
+- **Blocks:** the DETECT three-window correlation math; replayability of DETECT grading
+- **What we know:**
+  - NTP egress is blocked by containment, so victim/SIEM/actor clocks WILL skew.
+  - Fix is twofold: a versioned `skew_budget_s` pad on the correlation window AND
+    measuring victim↔host offset at onboard, stored on the manifest
+    (`clock_offset_s`) for window correction; prefer correlating on
+    `correlation_id` / host+technique where the log format allows.
+  - The Clock port governs this grading-window math (reconciling SIEM ingest
+    timestamps to actor Clock), not just event emission.
+- **What we don't:** the numeric default for `skew_budget_s`, and whether offset
+  is measured once at onboard or re-sampled (clocks drift over a long window).
+- **Options on the table:**
+  - A. Single offset measured at onboard + a conservative `skew_budget_s` pad
+    (e.g. 30 s) — simple; may under-correct on long windows.
+  - B. Periodic re-measurement of offset during the attack window — tighter; more
+    machinery.
+- **Who needs to weigh in:** owner, with detection-engineering input
+- **Decision deadline:** before the detection grading oracle is implemented
+- **Default if no decision by deadline:** Option A — measure offset once at
+  onboard, store `clock_offset_s` on the manifest, default `skew_budget_s` to a
+  conservative pad; prefer `correlation_id`-based correlation where the log
+  format carries it; revisit Option B only if long-window drift bites.
+
+## Reserved ADR
+
+- **ADR-0006 — Containment authority: host-side-continuous (RESERVED 2026-05-30,
+  critic F3).** The TOCTOU + guest-trust + vboxnet-shaped pre-flight is redesigned
+  so the **host-side nftables forward-drop is the primary enforcement** and a
+  **host-side continuous egress tripwire (whole-window) is the real gate** that
+  fires `IsolationFailed` + `panic()` on ANY egress packet; `verify_contained()`
+  and the in-guest probe are demoted to corroboration only. The model + the new
+  `IsolationReport(version:2)` explicitly cover **IPv6** (nft `inet`/`ip6tables`),
+  **DNS egress**, and the **Docker bridge** plane (the Vulhub/web MVP runs in
+  Docker, whose compose-network egress is NOT governed by the vboxnet nft chain).
+  **Provisioning-window invariant (INVARIANT — closes the one SERIOUS
+  non-fatal from the confirming critic pass):** the host-side egress tripwire
+  is **DISARMED** during the sanctioned provisioning window (NAT-on, for
+  `apt`/Packer/box-build per Q-012) and **RE-ARMED** before the first attack
+  step. Provisioning traffic must never fire `panic()` (else benign apt/box
+  egress would DoS the lab). Arm window is **[post-onboard/post-provision,
+  pre-first-attack]** through **[end of attack/teardown]**; ADR-0006 must
+  record this arm/disarm contract.
+  Written out at `/decompose` of the containment/isolation phase.
 
 ## Expert / legal checkpoints ⚖️
 
@@ -217,3 +401,4 @@ specialist, regulator) — Claude does not make these calls.
 | ID | Question | Why withdrawn |
 |---|---|---|
 | — | (none yet) | — |
+</content>
