@@ -190,7 +190,10 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 - Effort: S
 - Worktree-safe with: T-002, T-003, T-004.
 - Agent: lab-orchestration-engineer
-- Status: blocked-on-T-001
+- Status: DONE (PR #6) — `lab/storage.py` (computed layout + relocation config,
+  stdlib-only) passes the 17-test contract; 116 total green, ruff clean, gates
+  pass, import creates no real `/mnt/data`. reviewer APPROVE (no blockers; single
+  `_SUBDIRS` source-of-truth, genuinely idempotent, VAGRANT_HOME-only env).
 
 ### T-006  ADR-0002 — Hypervisor behind LabProvider                  [PARALLEL]
 - Depends on: none (write at M0; **finalize/confirm at M2** when the real
