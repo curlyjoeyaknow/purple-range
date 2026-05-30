@@ -650,7 +650,7 @@ prevents regression.
 | Dependency | Pin | Notes / verification |
 |---|---|---|
 | Security Onion | **2.4.211-20260407** (2026-04-07) | latest 2.4.x at check time; verify ISO/`so-version` before build (Q-002 unattended path) |
-| GOAD | commit-pin off **`v3.0.0`** (2024-11-29 "V3 beta merge into main") | GOAD does not cut clean semver releases — **pin a specific commit**, not the floating tag (→ Q-013) |
+| GOAD | commit **`8c18acc1bd857efda07a15297466fae114bb484b`** (= tag `v3.0.0`, resolved via `git ls-remote` in T-002, 2026-05-31) | GOAD does not cut clean semver releases — **pin the commit**, not the floating tag (Q-013 → resolved). Source of truth for the pin is the manifest in `lab/fetch_deps.py`; this row mirrors it. |
 | Vulhub | commit **`d277a8693e588684e951dddb0733809e53881a3c`** (2026-05-01) | rolling repo, no releases — commit-pinned by construction |
 | Atomic Red Team | commit **`daee1d5098b5a03c260835f87c33c3814c4695fa`** (2026-05-24) | **no formal releases** — rolling master; commit-pin mandatory |
 | Caldera | **v5.3.0** (2025-04-24) | DEFERRED/optional adapter; recorded for when it lands |
