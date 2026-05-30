@@ -12,6 +12,11 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
 ## [Unreleased]
 
 ### Added
+- T-005: `/mnt/data` storage-layout bootstrap + relocation config — `lab/storage.py`
+  (stdlib-only, pure `pathlib`). Computes the 7 canonical artifact subdirs
+  (`vendor boxes vbox secgen-builds box-cache work state`) under a base,
+  `ensure_layout()` creates them idempotently, and `relocation_env()` points
+  `VAGRANT_HOME`/VBox machine folder at `/mnt/data` to keep the root tree < 50 MB.
 - Project bootstrap for **Purple Range** (codename Phalanx) — a single-user,
   single-host purple-team training lab; clean rebuild of `cyber-range`.
 - Framework scaffold (CLAUDE.md operating manual, `.claude/` agents + skills,
