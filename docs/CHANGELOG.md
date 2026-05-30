@@ -87,6 +87,25 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
   now carry self-documenting inline markers (`# PLACEHOLDER (wired in T-xxx)` vs
   `# SKIP-WHEN-ABSENT`) so a contributor copying a stage won't leave a stray
   `exit 0` in a real check.
+- T-004: `lab/` package — the locked CLI dispatch scaffold + ValidationEvent(v1)
+  ledger skeleton. `lab/cli.py` registers the FULL argparse dispatch table up
+  front (plan-critic C1) — six top-level verbs (`up down reset validate status
+  panic`, each with an optional `<phase>`; `validate` also takes `--smoke`/
+  `--e2e`/`--pair`) and three stream sub-command groups (`detection onboard`,
+  `threat-actor run`, `isolation arm`/`disarm`) — so streams S1/S2/S3 register
+  against a fixed argparse surface. (The per-command handler-dispatch *body* seam
+  is NOT built yet — `main()` builds the event inline; T-101 adds the
+  `check -> handler` seam before fan-out, followup F-007.) Each recognized command appends
+  exactly one `not-implemented` ValidationEvent with its pinned `check` string
+  and exits 0; an unknown command is an argparse error (nonzero, no event).
+  `lab/ledger.py` defines the versioned, frozen `ValidationEvent` (charter #2 —
+  `version:int` first and serialized; `phase`/`evidence_ref=None` → JSON null),
+  the append-only `Ledger` port (charter #4) with `JsonlLedger` (prod, one JSON
+  line/event, append-mode, never truncates) + `InMemoryLedger` fake, and the
+  `Clock` port with `FixedClock` (test) + `SystemClock` (prod). cli.py stamps
+  `ts` from the injected clock — never `datetime.now()` — and imports NO vendor
+  SDK/concrete provider, sitting over the T-101 `LabProvider` seam. `python -m
+  lab` works via `lab/__main__.py`. 43 contract tests (20 CLI + 23 ledger).
 
 ### Changed
 - Containment model hardened (critic F3): host-side nftables forward-drop as the

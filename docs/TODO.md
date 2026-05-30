@@ -170,7 +170,12 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 - Effort: M
 - Worktree-safe with: T-002, T-003, T-005.
 - Agent: lab-orchestration-engineer
-- Status: blocked-on-T-001
+- Status: DONE (PR #5) — `lab/` package (`cli.py` locked argparse dispatch table,
+  `ledger.py` ValidationEvent(v1) + Ledger/Clock ports + JsonlLedger/InMemory/
+  FixedClock/SystemClock, `__main__.py`); 43 contract tests green (99 total),
+  ruff clean, pins + size gates pass. reviewer APPROVE + external-reviewer pass;
+  two seams deferred to T-101 with binding acceptance (F-006 Rng-port `run_id`,
+  F-007 handler-dispatch seam).
 
 ### T-005  `/mnt/data` storage layout + config                       [BLOCKER]
 - Depends on: T-001
@@ -272,6 +277,12 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
     OK); a stream adding `adapters/<domain>/<name>.py` registers by ADD only —
     `test_registry_lists_all_eight_adapter_slots` guards the surface.
   - If a fake is hard to write, the interface is wrong — redesign the interface.
+  - **Closes F-006:** replace `lab/cli.py`'s inline `uuid.uuid4().hex` `run_id`
+    with an `Rng`-minted, run-scoped `correlation_id` injected into `main()` (like
+    the Clock) — no unported randomness survives M1a.
+  - **Closes F-007:** introduce the `lab` per-command handler-dispatch seam
+    (`check -> handler` table or `lab/handlers/` package) so S1/S2/S3 fill command
+    bodies by ADD, never editing `main()` — land this BEFORE the streams fan out.
 - Test plan: tester writes, first and failing:
   `test_every_persisted_shape_requires_version`,
   `test_schema_rejects_malformed_<shape>` per shape,
@@ -762,6 +773,10 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 - Acceptance:
   - `--smoke` boot/health/down; `--e2e` full loop green; report = fold of the
     JSONL ledger. Harness logic CI-tested via InMemoryLab.
+  - **Consume the tier flags (T-004 left them parsed-but-inert):** `--smoke`/
+    `--e2e`/`--pair` must drive the emitted ValidationEvent/tier behaviour, and
+    `--pair` arity must be tightened from the skeleton's loose `nargs="*"` to
+    exactly two phases (T-004 external review). Until done they are no-ops.
 - Test plan: tester writes `test_validation_ledger_folds_to_matrix` and
   `test_e2e_tier_asserts_zero_egress_count` against fakes first.
 - Effort: M
@@ -962,6 +977,24 @@ T-403**); T-602 inherits via T-403.
   Fix: when the structure test is revised, either reference `${{ env.PYTHON_VERSION }}`
   + assert on the env value, or drop the unused var.
   - Source: T-003 polish, 2026-05-31. Severity: 🟢 — cosmetic.
+- [ ] **F-006 — `lab/cli.py` mints `run_id` via `uuid.uuid4()` directly, bypassing the Rng port.**
+  Charter #3 + ARCHITECTURE.md (Rng port L37/L84, determinism L296-301) require
+  randomness behind a port with a `SeededRng` fake; the `correlation_id`/run id must
+  be drawn from the Rng stream and replayed from the log, not re-derived. The T-004
+  skeleton's `run_id` is a throwaway (no test pins it), so this was deferred.
+  **MUST be closed in T-101** (which lands the Rng port + `correlation_id` minting):
+  replace the inline `uuid.uuid4().hex` in `lab/cli.py` with an Rng-minted, run-scoped
+  id injected into `main()` like the clock.
+  - Source: T-004 review, 2026-05-31. Severity: 🟠 — accepted deferral; T-101 acceptance must call it out.
+- [ ] **F-007 — `lab` CLI has no per-command handler-dispatch seam yet.**
+  `main()` builds the not-implemented `ValidationEvent` inline for ALL commands; there
+  is no `check -> handler` table / `handlers/` module. So a stream filling a real
+  command body (S1 `detection onboard`, S2 `threat-actor run`, S3 `isolation arm/disarm`)
+  would edit `main()` — the false-concurrency the dispatch-lock was meant to prevent,
+  relocated from the parser to `main()`. The argparse table IS locked; the body seam is not.
+  **Introduce the handler seam in T-101** (a `dict[str, Callable]` keyed on `check`, or a
+  `lab/handlers/` package) BEFORE S1/S2/S3 fan out.
+  - Source: T-004 review, 2026-05-31. Severity: 🟡 — accepted; T-101 prerequisite for parallel fan-out.
 
 ## Open questions (decisions still needed before/within the graph)
 
