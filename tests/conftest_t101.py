@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import copy
 
-
 # --------------------------------------------------------------------------
 # Valid-instance builders, one per persisted shape. version is ALWAYS present
 # and is the contract's first declared field.

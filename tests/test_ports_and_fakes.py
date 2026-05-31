@@ -31,10 +31,10 @@ from __future__ import annotations
 
 import pytest
 
-# Plain imports — RED at collection until T-101 lands ports + fakes.
-import ports
 import adapters
 
+# Plain imports — RED at collection until T-101 lands ports + fakes.
+import ports
 
 # port-name -> (Protocol attr on `ports`, required method names, fake attr on `adapters`)
 PORT_SPECS = {

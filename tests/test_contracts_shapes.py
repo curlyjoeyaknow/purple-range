@@ -28,15 +28,13 @@ from __future__ import annotations
 import dataclasses
 import json
 
-import pytest
-
 import conftest_t101 as fx
+import pytest
 
 # Plain import — NOT importorskip. T-101 must go RED (collection ImportError)
 # until `contracts` lands; a skipped test would let CI's contracts stage pass
 # green against a non-existent contract surface, defeating the lock.
 import contracts
-
 
 ALL_SHAPES = list(fx.PERSISTED_SHAPES)
 

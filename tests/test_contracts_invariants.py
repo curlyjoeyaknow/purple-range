@@ -32,11 +32,11 @@ import json
 
 import conftest_t101 as fx
 
+import adapters
+
 # Plain imports — must go RED at collection until T-101 lands the packages.
 import contracts
 import ports  # noqa: F401  (imported to assert the package exists)
-import adapters
-
 
 # --------------------------------------------------------------------------
 # manifest_hash — canonical + stable
@@ -74,9 +74,11 @@ def test_manifest_hash_changes_when_any_input_changes():
     """Any change to victim, vulns, or seed yields a different hash."""
     base = contracts.manifest_hash(fx.victim(), [fx.vuln()], 1234)
     assert contracts.manifest_hash(fx.victim(), [fx.vuln()], 9999) != base, "seed change"
-    v = fx.victim(); v["hostname"] = "other"
+    v = fx.victim()
+    v["hostname"] = "other"
     assert contracts.manifest_hash(v, [fx.vuln()], 1234) != base, "victim change"
-    vu = fx.vuln(); vu["id"] = "v2"
+    vu = fx.vuln()
+    vu["id"] = "v2"
     assert contracts.manifest_hash(fx.victim(), [vu], 1234) != base, "vulns change"
 
 

@@ -20,12 +20,11 @@ from __future__ import annotations
 
 import pytest
 
-from lab import cli  # already exists (T-004)
-from lab.ledger import InMemoryLedger, FixedClock  # already exists (T-004)
-
 # Plain import — RED at collection until T-101 lands the SeededRng adapter and
 # rewires cli.main() to accept it (F-006).
 import adapters
+from lab import cli  # already exists (T-004)
+from lab.ledger import FixedClock, InMemoryLedger  # already exists (T-004)
 
 
 def _run(argv, *, rng, ledger=None, clock=None):
