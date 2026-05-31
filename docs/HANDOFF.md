@@ -1,4 +1,4 @@
-# HANDOFF — 2026-05-31 (T-101 MERGED #9; T-100/ADR-0007 committed+pushed e01bbbc, critic-cleared; NEXT: T-110 EventStore, tester-first)
+# HANDOFF — 2026-05-31 (T-101 MERGED #9; T-100/ADR-0007 + T-110 EventStore DONE+GREEN, pushed 204d074; NEXT: reviewer on T-110 → T-111 Scorer)
 
 > Written by `docs-keeper`. Resume `/deliver` from "Next concrete step" with zero momentum lost.
 
@@ -27,14 +27,11 @@ This SESSION runs from `/home/memez/dev-bootstrap`, so the Task tool only resolv
 
 ## Next concrete step
 
-> ✅ **T-100 DONE** — `docs/ADR/0007-event-store-hash-chained-sqlite.md` committed + pushed (`e01bbbc` on `feat/t-100-t-110-eventstore`), mandatory critic loop closed (2 BLOCKERs + 4 MAJORs resolved in-doc). **T-110 is now unblocked. Resume HERE:**
+> ✅ **T-100 DONE** (`e01bbbc`, critic loop closed) and ✅ **T-110 DONE — GREEN** (`204d074` on `feat/t-100-t-110-eventstore`): `adapters/event_store.py` `SqliteEventStore` + `adapters/_chain.py` shared chain math + `InMemoryEventStore` upgraded to ADR-0007 semantics. Full suite **335 passed / 6 skipped**, `ruff check .` clean, both pushed. RED→GREEN committed separately (`1327162`→`204d074`). **Resume HERE:**
 
-1. **T-110 — Append-only hash-chained SQLite EventStore** (CRITICAL, effort L). `tester` FIRST locks the RED tests below, then `implementer` builds `SqliteEventStore` (prod) behind the EXISTING `EventStore` port + `InMemoryEventStore` fake from T-101. **Build strictly to ADR-0007's pinned design** (read it first): framed `row_hash = sha256(prev_hash_bytes + b"\x00" + canonical_bytes)`; `append` AUTHORITATIVE over `seq`/`prev_hash` (overwrites placeholders, returns `list[dict]` incl. `row_hash` — no port change); `allow_nan=False` + JSON-primitive-only `evidence`; **hash the bytes you persist, verify by re-reading them**; durability PRAGMA floor `synchronous=FULL` or `NORMAL`+WAL; conformance fixtures MUST include a float, a non-ASCII string, a nested-dict `evidence`, and a close-reopen round-trip. The RED tests:
-   - `test_verify_chain_detects_tampered_row` — `verify_chain()` PASSES clean, FAILS on any row edit/reorder/delete.
-   - `test_fold_replay_reproduces_scoreboard` — `replay_from(seq)` indexed seek; fold reproduces identical state.
-   - `test_unterminated_correlation_id_is_ungradeable` (M4) + `test_scenario_aborted_is_idempotent_on_correlation_id`.
-   - `test_append_latency_under_budget` — append < 5 ms/event; full rebuild < 1 s. Multi-row append = ONE TXN.
-3. **T-111 — Scorer** (CRITICAL): 3-pillar grading (ATTACK / DETECT-F1-three-window / MITIGATE-F2-functional-path), `idempotency_key`-keyed, per **ADR-0001**. Depends on T-110 + T-101.
+1. **Internal review of T-110** (agent: `reviewer`) — NOT yet run. Focus the chain integrity + InMemory↔SQLite byte-identity + the single-transaction atomicity, since GATE A reviewer-2 will attack exactly these. The implementer's own note to surface: byte-identity is structural (both adapters call `_chain`), and `verify_chain` re-hashes the STORED `payload` bytes (never a reparsed object). Then `external-reviewer` on the diff.
+2. **T-111 — Scorer** (CRITICAL, NEXT BUILD): 3-pillar grading (ATTACK / DETECT-F1-three-window / MITIGATE-F2-functional-path), `idempotency_key`-keyed, per **ADR-0001**. Depends on T-110 (done) + T-101. `tester` RED first → `implementer`. Folds the EventStore log; consumes the persisted-dict shape `fold`/`replay_from` now yield (ADR-0007 §1a) — call `contracts.load_<shape>()` for typed views. Keep the reducer/scoreboard schema decision here (T-110 left it as local test helpers, deliberately uncoupled).
+   - T-110 acceptance already locked & green: `test_verify_chain_detects_tampered_row`, `test_fold_replay_reproduces_scoreboard`, `test_*_idempotent_on_correlation_id`, `test_unterminated_correlation_id_is_ungradeable`, the §4a conformance fixtures, and the <5 ms append / <1 s rebuild budget — see `tests/test_event_store_t110.py`.
 4. **Then GATE A (the binding one):** TWO fresh `clean-room-reviewer` subagents over T-101+T-110+T-111, **both must PASS** (reviewer 1 contracts ✓ already; reviewer 2 = chain integrity + fold/replay determinism + idempotency/seed-reroll). adversarial, budget 4, MVP-blocking. THEN **M2** → T-203 = GATE B = MVP exit.
 5. **Per-task discipline (unchanged):** `tester` RED → `implementer` → `reviewer` → GATE per `docs/DELIVERY-PLAN.md` via FRESH `clean-room-reviewer`. Each task = feature branch → PR → **GREEN CI required** (all 10 checks; **run `ruff check .` AND `pytest tests/ -q` locally before pushing** — the review chain doesn't catch lint) → squash-merge → docs note.
 
