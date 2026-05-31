@@ -1,4 +1,4 @@
-# HANDOFF — 2026-05-31 (T-101 MERGED to main via PR #9, CI all-green; next: ADR-0007 (T-100) → T-110 EventStore)
+# HANDOFF — 2026-05-31 (T-101 MERGED #9; T-100/ADR-0007 committed+pushed e01bbbc, critic-cleared; NEXT: T-110 EventStore, tester-first)
 
 > Written by `docs-keeper`. Resume `/deliver` from "Next concrete step" with zero momentum lost.
 
@@ -27,10 +27,9 @@ This SESSION runs from `/home/memez/dev-bootstrap`, so the Task tool only resolv
 
 ## Next concrete step
 
-> The resume note's "T-110 next" was imprecise: T-110 is **blocked on T-100** (a doc-only ADR), and charter #6 says the ADR lands before the code. So:
+> ✅ **T-100 DONE** — `docs/ADR/0007-event-store-hash-chained-sqlite.md` committed + pushed (`e01bbbc` on `feat/t-100-t-110-eventstore`), mandatory critic loop closed (2 BLOCKERs + 4 MAJORs resolved in-doc). **T-110 is now unblocked. Resume HERE:**
 
-1. **T-100 — write ADR-0007** (agent: `architect`). Doc-only, effort S. Records: store = hash-chain is **tamper-EVIDENCE not -resistance**; `row_hash = H(prev_hash || canonical_json(event))`; the re-fold/re-chain owner property; and **SQLite-over-JSONL** justification (transactional multi-row append + indexed `seq` replay). Renumbered from the ADR-0005 clash → **0007**. Acceptance: `docs/ADR/0007-*.md` exists + docs CI stage passes. (T-100 also depends only on T-003, which is done.)
-2. **T-110 — Append-only hash-chained SQLite EventStore** (CRITICAL, effort L). `tester` FIRST locks these RED, then `implementer` builds `SqliteEventStore` (prod) behind the EXISTING `EventStore` port + `InMemoryEventStore` fake from T-101:
+1. **T-110 — Append-only hash-chained SQLite EventStore** (CRITICAL, effort L). `tester` FIRST locks the RED tests below, then `implementer` builds `SqliteEventStore` (prod) behind the EXISTING `EventStore` port + `InMemoryEventStore` fake from T-101. **Build strictly to ADR-0007's pinned design** (read it first): framed `row_hash = sha256(prev_hash_bytes + b"\x00" + canonical_bytes)`; `append` AUTHORITATIVE over `seq`/`prev_hash` (overwrites placeholders, returns `list[dict]` incl. `row_hash` — no port change); `allow_nan=False` + JSON-primitive-only `evidence`; **hash the bytes you persist, verify by re-reading them**; durability PRAGMA floor `synchronous=FULL` or `NORMAL`+WAL; conformance fixtures MUST include a float, a non-ASCII string, a nested-dict `evidence`, and a close-reopen round-trip. The RED tests:
    - `test_verify_chain_detects_tampered_row` — `verify_chain()` PASSES clean, FAILS on any row edit/reorder/delete.
    - `test_fold_replay_reproduces_scoreboard` — `replay_from(seq)` indexed seek; fold reproduces identical state.
    - `test_unterminated_correlation_id_is_ungradeable` (M4) + `test_scenario_aborted_is_idempotent_on_correlation_id`.
