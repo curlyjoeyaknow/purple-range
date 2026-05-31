@@ -19,6 +19,7 @@ and ``verify_chain`` re-reads THOSE bytes (§0 "hash the bytes you persist").
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from typing import Any, Iterator
 
@@ -65,6 +66,8 @@ class SqliteEventStore:
         transaction rolls back — none of the batch persists, the chain is
         unbroken. Returns ``list[dict]`` of the populated persisted rows.
         """
+        if not events:  # no-op: don't open a transaction under synchronous=FULL
+            return []
         tip_seq, tip_hash = self._tip()
         # May raise (ValueError / SchemaError) — nothing written yet, so the
         # store is untouched and the chain stays intact (§4 all-or-nothing).
@@ -106,6 +109,19 @@ class SqliteEventStore:
         ).fetchall()
         return _chain.verify_rows(rows)
 
+    # -- lifecycle -------------------------------------------------------
+
+    def close(self) -> None:
+        """Close the underlying connection. Idempotent — safe to call twice."""
+        self._conn.close()
+
+    def __enter__(self) -> SqliteEventStore:
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        self.close()
+        return False  # never suppress exceptions
+
     # -- internals -------------------------------------------------------
 
     def _tip(self) -> tuple[int, str]:
@@ -124,8 +140,6 @@ class SqliteEventStore:
         shape ``append`` returns — reconstructed from the stored ``payload`` plus
         the stored ``row_hash``, never the caller's frozen dataclass.
         """
-        import json
-
         cur = self._conn.execute(
             f"SELECT payload, row_hash FROM events {where} ORDER BY seq", params
         )
