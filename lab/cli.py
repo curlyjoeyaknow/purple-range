@@ -41,8 +41,9 @@ from __future__ import annotations
 
 import argparse
 import sys
-import uuid
 
+import adapters
+import contracts
 from lab.ledger import (
     Clock,
     JsonlLedger,
@@ -50,6 +51,7 @@ from lab.ledger import (
     SystemClock,
     ValidationEvent,
 )
+from ports import Rng
 
 # Production location of the append-only validation ledger
 # (ARCHITECTURE.md ~L689). Only used when no ledger is injected.
@@ -60,6 +62,13 @@ NOT_IMPLEMENTED = "not-implemented"
 # Top-level verbs that take an optional <phase> positional. Each maps 1:1 to
 # its pinned `check` string (the bare verb name).
 TOP_LEVEL_VERBS = ("up", "down", "reset", "validate", "status", "panic")
+
+# F-007 — the check->handler dispatch seam. A stream fills a command BODY by
+# registering ``HANDLERS[<check>] = fn`` (ADD only) without editing the parser
+# or ``main()``. A registered handler is invoked as ``fn(ctx) -> int`` (the rc
+# main returns). Empty at lock time: every recognized command still falls back
+# to the T-004 default (append one not-implemented ValidationEvent, return 0).
+HANDLERS: dict = {}
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -122,15 +131,24 @@ def main(
     *,
     ledger: Ledger | None = None,
     clock: Clock | None = None,
+    rng: Rng | None = None,
 ) -> int:
-    """Parse ``argv``, run the matched stub, append one event, return 0.
+    """Parse ``argv``, dispatch the matched command, return its exit code.
 
-    Tests inject fake ``ledger``/``clock``; production wires a ``JsonlLedger``
-    at :data:`DEFAULT_LEDGER_PATH` and a ``SystemClock``. The timestamp is read
-    from the clock port — never ``datetime.now()`` here.
+    Tests inject fake ``ledger``/``clock``/``rng``; production wires a
+    ``JsonlLedger`` at :data:`DEFAULT_LEDGER_PATH`, a ``SystemClock``, and a
+    system ``SeededRng``. The timestamp is read from the clock port — never
+    ``datetime.now()`` here.
 
-    An unparseable command raises ``SystemExit`` (argparse) before any event is
-    appended.
+    F-006: the ``run_id`` is minted from the injected ``Rng`` port (not a random
+    UUID), so a SeededRng makes the run_id replayable.
+
+    F-007: if a handler is registered in :data:`HANDLERS` for the resolved
+    ``check`` string it is invoked (``handler(ctx) -> int``) and its return code
+    is returned; otherwise the T-004 default runs — append exactly one
+    not-implemented ``ValidationEvent`` and return 0.
+
+    An unparseable command raises ``SystemExit`` (argparse) before any dispatch.
     """
     if argv is None:
         argv = sys.argv[1:]
@@ -138,14 +156,31 @@ def main(
         ledger = JsonlLedger(DEFAULT_LEDGER_PATH)
     if clock is None:
         clock = SystemClock()
+    if rng is None:
+        rng = adapters.SeededRng()
 
     parser = _build_parser()
     args = parser.parse_args(argv)  # SystemExit on unknown command/sub-command
 
+    check = _check_for(args)
+    run_id = contracts.mint_correlation_id(rng)
+
+    handler = HANDLERS.get(check)
+    if handler is not None:
+        ctx = {
+            "args": args,
+            "check": check,
+            "run_id": run_id,
+            "ledger": ledger,
+            "clock": clock,
+            "rng": rng,
+        }
+        return handler(ctx)
+
     event = ValidationEvent(
-        run_id=uuid.uuid4().hex,
+        run_id=run_id,
         phase=getattr(args, "phase", None),
-        check=_check_for(args),
+        check=check,
         status=NOT_IMPLEMENTED,
         evidence_ref=None,
         ts=clock.now_iso(),

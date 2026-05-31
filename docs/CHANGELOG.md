@@ -12,6 +12,27 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
 ## [Unreleased]
 
 ### Added
+- T-101: **M1a contract lock (GATE A passed, clean-room PASS loop 1)** — the
+  contract spine, all stdlib-only / additive / version-first. NEW `contracts/`
+  package: 13 versioned persisted shapes as frozen dataclasses (`scenario`,
+  `vuln_manifest(v2)`, `onboard_spec`, `detection_rule(v2)`, `attack_event`,
+  `isolation_report(v2)`, `validation_event` [references `lab.ledger.ValidationEvent`,
+  not redefined], `scenario_generated(v2)`, `attack_executed`, `scenario_aborted`,
+  `submission`, `verification_result(v2)`, `score_awarded(v2)`), each loadable via
+  `load_<shape>()` returning a frozen instance or raising `contracts.SchemaError`
+  (incl. nested-field validation). `contracts.SCHEMAS` holds stdlib-validated
+  JSON-Schemas (no `jsonschema` dep). Invariants implemented: `canonical_json`,
+  `manifest_hash = sha256(canonical_json(victim, vulns, seed))`, `idempotency_key =
+  (scenario_id, challenge_id, pillar, manifest_hash)`, and `mint_correlation_id(rng)`
+  (Rng-port-minted, **F-006**). `dump()` is lossless, version-first, and deep-copies
+  nested containers (no aliasing into frozen instances). NEW `ports/` package: 8
+  `@runtime_checkable` Protocols (LabProvider, ScenarioGenerator, ThreatActor,
+  Telemetry, IsolationProvider, EventStore, Clock, Rng), no vendor SDK. NEW
+  `adapters/` package: 8 conforming fakes (InMemoryLab, FixedManifestGen,
+  ScriptedActor, ReplayLogBundle, CannedReport, InMemoryEventStore, FixedClock,
+  SeededRng) + `REGISTRY` (8 ADD-only slots). 294 passed / 6 skipped (the 6 skips
+  are event shapes with no container field to test aliasing on). See
+  [`docs/TODO.md`](TODO.md) T-101.
 - **M0 milestone complete (2026-05-31)** — repo hygiene, push-blocking CI gate,
   `lab` CLI + ValidationEvent(v1) ledger, `/mnt/data` storage layout, and the
   pinned dependency fetcher all merged to `main`; 133 tests green; CI live and
@@ -149,6 +170,11 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
   lab` works via `lab/__main__.py`. 43 contract tests (20 CLI + 23 ledger).
 
 ### Changed
+- T-101: `lab/cli.py` — **F-006** closed: `main()` now takes an injected `rng=`
+  and mints `run_id` from the Rng port (`uuid4` removed) — no unported randomness
+  survives M1a. **F-007** closed: a `HANDLERS` `check -> handler` dispatch table
+  added so a registered handler replaces the default not-implemented event-append
+  path; S1/S2/S3 fill command bodies by ADD, never editing `main()`.
 - Containment model hardened (critic F3): host-side nftables forward-drop as the
   primary enforcement + continuous host-side egress tripwire (v4/v6/DNS, vboxnet
   and Docker bridge planes) as the real gate; in-guest probe demoted to

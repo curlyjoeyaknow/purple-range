@@ -82,7 +82,8 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 ## M0 — Repo hygiene + bootstrap  ✅ M0 COMPLETE (2026-05-31)
 
 > All 7 M0 tasks merged to `main` (5 code blockers + 2 ADRs); 133 tests green;
-> CI live with 10 required checks. Next: T-101 = M1a contract lock = GATE A.
+> CI live with 10 required checks. M1a contract lock T-101 is DONE (GATE A PASS
+> loop 1); next is the GATE-A remainder — T-110 (EventStore) → T-111 (Scorer).
 
 ### T-001  De-bloat the tracked tree (6.2 GB → < 50 MB)            [BLOCKER]
 - Depends on: none
@@ -315,7 +316,17 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 - Effort: L
 - Worktree-safe with: T-100 (doc). **Blocks** T-110, T-201, S1, S2, S3.
 - Agent: tester (locks shapes) + implementer
-- Status: blocked-on-T-003, blocked-on-T-004
+- Status: DONE (branch `feat/t-101-contracts`, **GATE A PASS loop 1, no blockers**) —
+  NEW `contracts/` (13 versioned frozen-dataclass shapes + `load_<shape>()` →
+  frozen/`SchemaError`; stdlib `contracts.SCHEMAS`, no `jsonschema` dep;
+  `canonical_json` / `manifest_hash` / `idempotency_key` / `mint_correlation_id(rng)`
+  (F-006); lossless deep-copying `dump()`), NEW `ports/` (8 `@runtime_checkable`
+  Protocols, no vendor SDK), NEW `adapters/` (8 conforming fakes + `REGISTRY`
+  8 ADD-only slots), and `lab/cli.py` F-006 (Rng-minted `run_id`, `uuid4` removed)
+  + F-007 (`HANDLERS` `check->handler` dispatch). 294 passed / 6 skipped
+  (`pytest tests/ -q`); `validation_event` references `lab.ledger.ValidationEvent`
+  (not redefined). Clean-room verdict: PASS, three NIT-grade smells noted as
+  intentional/forward-compat — see OPEN-QUESTIONS Q-017/Q-018/Q-019.
 
 ### T-103  Unified dependency manifest — all-stream pins added ONCE  [BLOCKER]
 - Depends on: T-101 (so the contract surface that names the deps exists)
@@ -359,7 +370,9 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 - Worktree-safe with: nothing on the critical path (it IS the path); S1/S2/S3
   run in parallel against the **fakes**, not this.
 - Agent: implementer
-- Status: blocked-on-T-101
+- Status: ready — **next on the GATE-A-remainder / M1b critical path** (T-101 event
+  shapes + `InMemoryEventStore` fake now LOCKED). Doc dependency T-100 (ADR-0007,
+  the store hash-chain ADR) precedes the chain impl.
 
 ### T-111  Scorer — 3-pillar grading logic (pure core)                [CRITICAL]
 - Depends on: T-110 (EventStore), T-101 (manifest/rule/event shapes + fakes)
@@ -392,7 +405,8 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 - Effort: L
 - Worktree-safe with: nothing (critical path).
 - Agent: implementer
-- Status: blocked-on-T-110
+- Status: blocked-on-T-110 (T-101 manifest/rule/event shapes + fakes now LOCKED;
+  the remaining GATE-A-remainder dependency is the EventStore T-110)
 
 ---
 
