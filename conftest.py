@@ -18,3 +18,13 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
+
+
+def pytest_configure(config):
+    """Register custom marks so ``-W error`` / strict-markers stays quiet.
+
+    ``perf`` flags the T-110 latency/rebuild-budget test (a generous, non-flaky
+    NFR bound) so it can be selected/deselected (``-m perf`` / ``-m 'not perf'``)
+    without an "unknown mark" warning.
+    """
+    config.addinivalue_line("markers", "perf: performance/latency budget tests (NFR)")
