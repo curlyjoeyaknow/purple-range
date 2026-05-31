@@ -12,6 +12,19 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
 ## [Unreleased]
 
 ### Added
+- T-100: **ADR-0007 — hash-chained SQLite EventStore (tamper-EVIDENCE, not
+  -resistance)** — `docs/ADR/0007-event-store-hash-chained-sqlite.md`. Records the
+  store the scoring spine folds over: a stdlib-`sqlite3` append-only `events` table
+  with a monotonic `seq` and a forward hash-chain `row_hash = sha256(prev_hash ||
+  \x00 || canonical_bytes)` (framed input), behind the already-locked `EventStore`
+  port (no port change). `append` is authoritative over `seq`/`prev_hash` (overwrites
+  caller placeholders, returns `list[dict]` incl. `row_hash`); `verify_chain()` hashes
+  the bytes it persists and verifies by re-reading them. Threat model pinned: this
+  is evidence of post-hoc verdict tampering, **not** resistance, and explicitly
+  **not** scoring-input integrity (the CTF player has host access). Durability PRAGMA
+  floor pinned (`synchronous=FULL` or `NORMAL`+WAL). Mandatory critic loop closed —
+  2 BLOCKERs + 4 MAJORs resolved in-doc before any T-110 code. Precedes T-110
+  (charter #6: ADR before code). See [`docs/TODO.md`](TODO.md) T-100.
 - T-101: **M1a contract lock (GATE A passed, clean-room PASS loop 1)** — the
   contract spine, all stdlib-only / additive / version-first. NEW `contracts/`
   package: 13 versioned persisted shapes as frozen dataclasses (`scenario`,

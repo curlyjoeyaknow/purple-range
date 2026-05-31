@@ -264,7 +264,14 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 - Effort: S
 - Worktree-safe with: T-101 (doc vs code, but precedes the chain impl).
 - Agent: architect
-- Status: blocked-on-T-003
+- Status: **DONE** (uncommitted on `feat/t-100-t-110-eventstore`) — `docs/ADR/0007-event-store-hash-chained-sqlite.md`
+  (705 lines). Critic loop closed: 2 BLOCKERs (B1 hashed-input stability — framed
+  `sha256(prev_hash||\x00||canonical_bytes)`, `allow_nan=False`-at-append, JSON-primitive-only
+  `evidence`, hash-bytes-you-persist; B2 `append`-authoritative over `seq`/`prev_hash`, `list[dict]`
+  return, no port change) + 4 MAJORs (M1 log- vs scoring-integrity w/ host-access caveat, M2 conformance
+  fixtures, M3 corruption-recovery posture, M4 pinned durability PRAGMA floor) all resolved in-doc;
+  minors N1/N2/N3/N5 folded in. GATE-A reviewer-2 (chain integrity + replay) re-attacks this once
+  T-110/T-111 code exists. **Unblocks T-110.**
 
 ### T-101  Versioned contracts + JSON-Schemas + ALL port FAKES        [BLOCKER]
 - Depends on: T-003 (contracts CI stage), T-004 (ValidationEvent skeleton)
