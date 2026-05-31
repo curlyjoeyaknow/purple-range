@@ -18,6 +18,9 @@ from __future__ import annotations
 import random
 from typing import Any, Iterator
 
+from adapters import _chain
+from adapters.event_store import SqliteEventStore
+
 
 # --------------------------------------------------------------------------
 # LabProvider fake
@@ -118,26 +121,55 @@ class CannedReport:
 # EventStore fake
 # --------------------------------------------------------------------------
 class InMemoryEventStore:
-    """Fake EventStore: list-backed; same fold/replay semantics as production."""
+    """Fake EventStore: list-backed, with the SAME chain math as ``SqliteEventStore``.
+
+    T-110 upgraded this from a pass-through stub to a true boundary double: it
+    holds the persisted rows in memory but runs every chain operation through the
+    shared ``adapters._chain`` primitives, so its ``row_hash`` is BYTE-IDENTICAL
+    to the SQLite adapter's (ADR-0007 §4a conformance) and its ``verify_chain``
+    re-reads the persisted canonical bytes exactly as the real adapter does. The
+    only thing it cannot model is on-disk durability across a close/reopen — that
+    is the SQLite-only test (§4a round-trip).
+    """
 
     def __init__(self) -> None:
-        self._events: list = []
+        # Each item is a persisted row: the §1a public dict plus the private
+        # ``_event_type`` / ``_payload`` bookkeeping the chain math carries.
+        self._rows: list[dict] = []
 
     def append(self, events: list) -> list:
-        self._events.extend(events)
-        return list(events)
+        """Authoritatively stamp + chain a batch (§1a/§4), all-or-nothing.
+
+        ``chain_batch`` raises on the first invalid event BEFORE ``self._rows`` is
+        touched, so a poisoned batch leaves the in-memory chain unbroken — the
+        same atomicity the SQLite transaction gives.
+        """
+        tip_seq, tip_hash = self._tip()
+        persisted = _chain.chain_batch(tip_seq, tip_hash, events)
+        self._rows.extend(persisted)
+        return [_chain.public_row(r) for r in persisted]
 
     def fold(self, reducer: Any, init: Any) -> Any:
         acc = init
-        for ev in self._events:
-            acc = reducer(acc, ev)
+        for row in self._rows:
+            acc = reducer(acc, _chain.public_row(row))
         return acc
 
     def replay_from(self, seq: int) -> Iterator:
-        return iter(self._events[seq:])
+        # seq is 1-based and gap-free; yield the suffix from `seq` onward.
+        return iter([_chain.public_row(r) for r in self._rows if r["seq"] >= seq])
 
     def verify_chain(self) -> bool:
-        return True
+        rows = [
+            (r["seq"], r["prev_hash"], r["_payload"], r["row_hash"]) for r in self._rows
+        ]
+        return _chain.verify_rows(rows)
+
+    def _tip(self) -> tuple[int, str]:
+        if not self._rows:
+            return 0, _chain.GENESIS_SENTINEL
+        tip = self._rows[-1]
+        return tip["seq"], tip["row_hash"]
 
 
 # --------------------------------------------------------------------------
@@ -196,7 +228,7 @@ REGISTRY: dict[str, list] = {
     "ThreatActor": [ScriptedActor],
     "Telemetry": [ReplayLogBundle],
     "IsolationProvider": [CannedReport],
-    "EventStore": [InMemoryEventStore],
+    "EventStore": [InMemoryEventStore, SqliteEventStore],
     "Clock": [FixedClock],
     "Rng": [SeededRng],
 }
@@ -209,6 +241,7 @@ __all__ = [
     "ReplayLogBundle",
     "CannedReport",
     "InMemoryEventStore",
+    "SqliteEventStore",
     "FixedClock",
     "SeededRng",
     "REGISTRY",

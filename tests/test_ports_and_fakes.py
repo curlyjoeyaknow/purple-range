@@ -29,6 +29,7 @@ means the port is overweight.
 
 from __future__ import annotations
 
+import conftest_t110 as ev110
 import pytest
 
 import adapters
@@ -99,10 +100,17 @@ def test_fake_conforms_to_port(name):
 
 
 def test_inmemory_event_store_round_trips_events():
-    """InMemoryEventStore behavioral smoke: append then fold reproduces state."""
+    """InMemoryEventStore behavioral smoke: append then fold reproduces state.
+
+    Per ADR-0007 §1a the fake now consumes contract event *dataclasses* (it
+    reconstructs each via ``contracts.dump`` to assign seq/prev_hash and hash the
+    row), not the ad-hoc dicts the T-101 stub used. Feed two real events; fold
+    must still see both. (Chain/authority semantics are covered in depth by
+    ``tests/test_event_store_t110.py``; this stays a one-line smoke.)
+    """
     store = adapters.InMemoryEventStore()
-    store.append([{"version": 1, "kind": "a"}, {"version": 1, "kind": "b"}])
-    count = store.fold(lambda acc, ev: acc + 1, 0)
+    store.append([ev110.scenario_generated(), ev110.attack_executed()])
+    count = store.fold(lambda acc, _ev: acc + 1, 0)
     assert count == 2, "fold over appended events must see every event"
 
 

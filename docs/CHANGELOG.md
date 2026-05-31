@@ -12,6 +12,22 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
 ## [Unreleased]
 
 ### Added
+- T-110: **Hash-chained SQLite EventStore (the scoring spine's persistence)** —
+  `adapters/event_store.py` (`SqliteEventStore`, stdlib `sqlite3` only, table
+  `events(seq, event_type, payload, prev_hash, row_hash)`, `PRAGMA
+  synchronous=FULL`, single-transaction batch append, indexed `seq` replay) +
+  `adapters/_chain.py` (the shared chain math both adapters call, so the fake and
+  SQLite are byte-identical by construction). `InMemoryEventStore` upgraded from
+  the T-101 stub to full ADR-0007 semantics. Behind the already-locked
+  `EventStore` port (no port change). `append` is authoritative over
+  `seq`/`prev_hash`, returns `list[dict]`; `verify_chain()` hashes the persisted
+  bytes and verifies by re-reading them (framed `row_hash = sha256(prev_hash ||
+  \x00 || canonical_bytes)`); NaN/Inf evidence rejected at append; `fold`/
+  `replay_from` are `seq`-ordered and yield persisted dicts. 28 tests / 39 cases
+  green incl. the InMemory↔SQLite conformance fixtures (float / non-ASCII /
+  nested-dict evidence + close-reopen) and the <5 ms append / <1 s rebuild
+  budget. The one T-101 stub smoke test that fed ad-hoc dicts was updated to feed
+  real contract events (intent preserved). See [`docs/TODO.md`](TODO.md) T-110.
 - T-100: **ADR-0007 — hash-chained SQLite EventStore (tamper-EVIDENCE, not
   -resistance)** — `docs/ADR/0007-event-store-hash-chained-sqlite.md`. Records the
   store the scoring spine folds over: a stdlib-`sqlite3` append-only `events` table

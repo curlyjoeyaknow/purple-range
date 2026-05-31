@@ -264,6 +264,13 @@ T-110:
   validation harness consume the returned rows' assigned `seq`/`prev_hash`/
   `row_hash` rather than re-reading; §2 `verify_chain` and T-111's fold both
   depend on `append` having been authoritative and on this populated return.
+- **`fold`/`replay_from` yield the SAME persisted-dict shape `append` returns**
+  (added during T-110, which pinned it in tests). The store reconstructs each
+  item from the stored `payload` (`json.loads`) plus the row's `seq`/`prev_hash`/
+  `row_hash` columns — it does **not** re-hydrate typed dataclasses (that would
+  couple the store to the contract catalog and the per-shape loaders). Consumers
+  that want a typed view call `contracts.load_<shape>()` on the yielded dict. So
+  the store's whole I/O surface is *dataclasses in, persisted dicts out*.
 
 **2. `verify_chain()` semantics — exact pass/fail.** Returns `True` iff,
 reading all rows ordered by `seq` and re-hashing the **stored `payload`
