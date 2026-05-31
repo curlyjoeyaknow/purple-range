@@ -410,6 +410,37 @@ Unresolved decisions that block, slow, or shape the work. Maintained by the
   now; add a signature gate (or the static-type CI stage) before stream fan-out
   if drift bites.
 
+### Q-020 — How does the Scorer reducer get each event's type discriminator, tamper-evidently? [BLOCKS T-111]
+
+- **Raised:** 2026-05-31 (T-110 internal `reviewer`, 🔴 — see [`docs/RED-TEAM.md`](RED-TEAM.md) 2026-05-31)
+- **Type:** technical / contract
+- **Blocks:** **T-111 (Scorer) — must resolve as its FIRST move, before any reducer code.** Also inside GATE A scope.
+- **What we know:**
+  - ADR-0007 §5 pins the reducer to dispatch on `(event_type, version)`.
+  - T-110 stores `event_type` as a `events` column derived from the dataclass name,
+    but it is **not** in the hashed `payload` and **not** in the `fold`/`replay_from`
+    yielded dict. So the chain does NOT protect it: tampering the column to `'LIE'`
+    keeps `verify_chain() == True`.
+  - The event dataclasses carry no explicit discriminator field — shapes are
+    distinguished structurally (field sets), which the reviewer flagged as fragile
+    for a reducer to rely on.
+- **What we don't:** which mechanism gives the reducer a discriminator that is BOTH
+  available on the read surface AND tamper-evident.
+- **Options on the table:**
+  - A. **Additive discriminator field** on every event dataclass (`event_type: str`),
+    so it's in `dump()` → hashed → yielded. Tamper-evident and clean, BUT a contract
+    change → needs an ADR note + critic, and ripples to committed tests
+    (`canonical_bytes_of` auto-includes it via `dump`; T-101 field-set assertions may
+    need updating). Likely the right answer.
+  - B. **Re-derive shape from payload** at read time (attempt `contracts.load_<shape>()`
+    / structural match). No contract change; fragile and O(shapes) per row.
+  - C. **Cross-check the column against the payload** in the reducer (dispatch on the
+    column but assert it matches a payload-derived shape; mismatch → ungradeable).
+    Cheapest; keeps the denormalized column but closes the tamper hole.
+- **Who needs to weigh in:** `architect` (contract impact) + `critic` (tamper-evidence) at the top of T-111.
+- **Decision deadline:** start of T-111.
+- **Default if no decision by deadline:** Option A (additive field) — it's the only one that makes the discriminator first-class and tamper-evident; do it via a short ADR-0007 addendum + critic pass.
+
 ## Reserved ADR
 
 - **ADR-0006 — Containment authority: host-side-continuous (RESERVED 2026-05-30,

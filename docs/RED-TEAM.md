@@ -19,6 +19,30 @@ F1/F2/F3 below closed).
 
 ---
 
+## 2026-05-31 — internal `reviewer` on T-110 (hash-chained SQLite EventStore)
+
+> Target: `adapters/event_store.py`, `adapters/_chain.py`, `adapters/__init__.py` (diff `36ed1f2..204d074`)
+> Invoked by: pm-orchestrator (post-implementer, pre-GATE-A). Full-context internal review.
+> Verdict: **REQUEST CHANGES** — chain integrity is sound; one ADR §5 read-surface gap + hygiene to fix before GATE A.
+
+**Verified SOUND under adversarial probes (the axes GATE-A reviewer-2 owns):**
+- Atomicity — `chain_batch` raises before any `BEGIN`; a mid-`executemany` failure under explicit `BEGIN`/`isolation_level=""` rolls back the whole batch (probed `[1,2,5,3]` collision → only pre-existing row survives).
+- Framing — `row_hash = sha256(prev_hash.encode("ascii") + b"\x00" + canonical_bytes)` computed once in `_chain.framed_row_hash`; genesis `"0"*64`; lone forged `seq=1` with wrong `prev_hash` fails verify.
+- "Hash the bytes you persist" — `verify_rows` re-hashes the stored `payload` string bytes, never a reparsed object (kills the float/unicode round-trip class). NaN/Inf rejected recursively into nested `evidence` + `allow_nan=False` belt-and-braces.
+- InMemory↔SQLite byte-identity is structural (both route through `_chain`); conformance fixtures + close-reopen pass.
+
+**🔴 BLOCKER (resolve as T-111's FIRST move — it's a T-110↔T-111 contract decision; see [[Q-020]]):** `event_type` is written to the column but never read, never hashed, and absent from the `fold`/`replay_from` yielded dict — yet ADR §5 pins the Scorer reducer to dispatch on `(event_type, version)`. Two consequences: (1) T-111 cannot dispatch as specified; (2) the column is unverified denormalization — tampering it out-of-band to `'LIE'` keeps `verify_chain` `True`, so dispatching on the unhashed column is a latent scoring-integrity hole. Do NOT just surface the unhashed column. Decide (architect): discriminator inside the hashed payload (additive contract field → ADR/critic, ripples to committed `canonical_bytes_of`) vs re-derive shape from payload vs cross-check column against payload. `adapters/event_store.py:120-135`.
+
+**🟠 MAJOR:** `SqliteEventStore` opens a connection in `__init__` that is never closed — no `close()`/`__del__`/`__enter__`/`__exit__`. Close-reopen "works" only by leaking the first handle; perf test opens 500 stores without cleanup. Add `close()` + context-manager. `adapters/event_store.py`.
+
+**🟡 MINOR:** function-local `import json` in `_iter_rows` (`event_store.py:127`) — hoist to module top. · `append([])` opens/commits an empty transaction under `synchronous=FULL` — add an early-return no-op guard.
+
+**Followups (not blockers):** `replay_from(seq<=0)` silently yields the whole log (ADR says 1-based — assert/document). · `test_scenario_aborted_is_idempotent_on_correlation_id` name implies store-level dedup; the store correctly appends 3 distinct position-bound rows (idempotency is a *reducer* property) — consider renaming. · the `@pytest.mark.perf` test RUNS in default `pytest -q` (not deselected) — confirm CI marker selection so it can't flake on a slow box.
+
+**Cheap-fix shortlist for the next iteration:** close()/context-manager, hoist `json` import, empty-batch guard, `replay_from` guard, test rename. Then `external-reviewer` for a fresh-context read of the framing/verify code before GATE A.
+
+---
+
 ## 2026-05-30 — `/critique` on the planning bootstrap (PRD + ARCHITECTURE + ADR-0001)
 
 > Target: `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/ADR/0001-manifest-oracle-event-sourced-scoring.md`
