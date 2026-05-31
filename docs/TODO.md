@@ -82,8 +82,10 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 ## M0 — Repo hygiene + bootstrap  ✅ M0 COMPLETE (2026-05-31)
 
 > All 7 M0 tasks merged to `main` (5 code blockers + 2 ADRs); 133 tests green;
-> CI live with 10 required checks. M1a contract lock T-101 is DONE (GATE A PASS
-> loop 1); next is the GATE-A remainder — T-110 (EventStore) → T-111 (Scorer).
+> CI live with 10 required checks. M1a contract lock **T-101 is MERGED** (PR #9,
+> `a76e3f7`, all 10 CI stages green; GATE-A reviewer-1/T-101 leg PASS). Next is the
+> GATE-A remainder: **T-100 (ADR-0007, precedes the chain impl) → T-110 (EventStore)
+> → T-111 (Scorer)**, then **GATE A = 2 fresh clean-room reviewers, both must PASS**.
 
 ### T-001  De-bloat the tracked tree (6.2 GB → < 50 MB)            [BLOCKER]
 - Depends on: none
@@ -316,7 +318,7 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
 - Effort: L
 - Worktree-safe with: T-100 (doc). **Blocks** T-110, T-201, S1, S2, S3.
 - Agent: tester (locks shapes) + implementer
-- Status: DONE (branch `feat/t-101-contracts`, **GATE A PASS loop 1, no blockers**) —
+- Status: **MERGED** (PR #9 `a76e3f7`, all 10 CI stages green; GATE-A reviewer-1/T-101 leg PASS loop 1, no blockers) —
   NEW `contracts/` (13 versioned frozen-dataclass shapes + `load_<shape>()` →
   frozen/`SchemaError`; stdlib `contracts.SCHEMAS`, no `jsonschema` dep;
   `canonical_json` / `manifest_hash` / `idempotency_key` / `mint_correlation_id(rng)`
