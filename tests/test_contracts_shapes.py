@@ -25,6 +25,7 @@ the existing 133 tests.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 
 import pytest
@@ -90,6 +91,84 @@ def test_round_trip_is_lossless(name):
     obj = _loader(name)(data)
     dumped = contracts.dump(obj)
     assert dumped == data, f"{name}: round-trip changed the payload"
+
+
+# --------------------------------------------------------------------------
+# 2b. NESTED malformed instances are rejected (B1). The schemas are NOT a
+#     top-level-only gate: malformed nested containers (a bad Component, a
+#     non-dict vuln, a missing F1 calibration ref) must be rejected too.
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "name, desc, mutate",
+    fx.NESTED_MALFORMED_CASES,
+    ids=[f"{c[0]}::{c[1]}" for c in fx.NESTED_MALFORMED_CASES],
+)
+def test_schema_rejects_nested_malformed(name, desc, mutate):
+    """A malformed NESTED container is rejected, not waved through."""
+    bad = mutate(fx.fresh(name))
+    with pytest.raises(contracts.SchemaError):
+        _loader(name)(bad)
+
+
+# --------------------------------------------------------------------------
+# 3b. dump() returns an independent snapshot (B2). The "frozen" contract must
+#     NOT be mutable through its dump: mutating a dumped nested container must
+#     leave the source instance unchanged on a subsequent dump.
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name", ALL_SHAPES)
+def test_dump_does_not_alias_nested_mutables(name):
+    """Mutating a dumped list/dict must not reach back into the instance."""
+    obj = _loader(name)(fx.fresh(name))
+    first = contracts.dump(obj)
+    mutated_any = False
+    for key, value in first.items():
+        if isinstance(value, list):
+            value.append("__intruder__")
+            mutated_any = True
+        elif isinstance(value, dict):
+            value["__intruder__"] = "x"
+            mutated_any = True
+    second = contracts.dump(obj)
+    assert second == fx.fresh(name), (
+        f"{name}: mutating dump() output bled back into the frozen instance"
+    )
+    if not mutated_any:
+        pytest.skip(f"{name}: no container fields to test aliasing on")
+
+
+def test_dump_components_append_does_not_mutate_source():
+    """Direct repro: dump(obj)['components'].append(...) leaves a 2nd dump intact."""
+    obj = contracts.load_scenario(fx.scenario())
+    contracts.dump(obj)["components"].append({"name": "intruder"})
+    assert len(contracts.dump(obj)["components"]) == 1
+
+
+# --------------------------------------------------------------------------
+# 3c. Schema/loader agreement (S1). For every persisted shape the set of
+#     non-version required fields the SCHEMA enforces must equal the set the
+#     LOADER (dataclass, no-default fields) enforces — so they cannot drift.
+#     `version` is excluded: it is schema-required everywhere, but the
+#     lab.ledger ValidationEvent dataclass carries a default for it, so it is
+#     "version-optional" at the constructor and must not count as a mismatch.
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("name", ALL_SHAPES)
+def test_schema_required_matches_loader_required(name):
+    cls = contracts.schemas._DATACLASS_FOR[name]
+    loader_required = {
+        f.name
+        for f in dataclasses.fields(cls)
+        if f.default is dataclasses.MISSING
+        and f.default_factory is dataclasses.MISSING
+    } - {"version"}
+    schema_required = set(contracts.SCHEMAS[name]["required"]) - {"version"}
+    assert schema_required == loader_required, (
+        f"{name}: schema/loader required-field sets disagree "
+        f"(schema-only={schema_required - loader_required}, "
+        f"loader-only={loader_required - schema_required})"
+    )
 
 
 # --------------------------------------------------------------------------

@@ -296,9 +296,10 @@ event; the DETECT correlation reconciles **SIEM ingest timestamps** to the actor
 Clock using that offset plus a versioned `skew_budget` pad. The Rng port mints
 `correlation_id`s (m1): two runs of the **same seed** must receive **distinct**
 correlation_ids (so concurrent/repeated runs never collide in the log) yet
-remain replayable — the correlation_id is a uuid drawn from the Rng port's
-stream, recorded in the event, and replay reads it back from the log rather than
-re-deriving it.
+remain replayable — the correlation_id is `mint_correlation_id(rng)` =
+`sha256(str(rng.next())).hexdigest()`, drawn from the Rng port's stream (NOT
+`uuid4`, which would break replay), recorded in the event, and replay reads it
+back from the log rather than re-deriving it. (Rng-port-minted; closes F-006.)
 
 ## Contracts (the spine)
 
@@ -427,8 +428,10 @@ Invariants:
   - prev_hash per row: row_hash = H(prev_hash || canonical_json(event)). The chain is
     tamper-EVIDENCE (corruption / accidental-edit / reorder tripwire), NOT
     tamper-RESISTANCE — the sole owner of the file can re-fold/re-chain at will (M3).
-  - correlation_id threads a scenario run (uuid from the Rng port; distinct per run
-    even for the same seed, m1); causation_id links each event to its cause.
+  - correlation_id threads a scenario run (mint_correlation_id(rng) =
+    sha256(str(rng.next())).hexdigest() from the Rng port — NOT uuid4; distinct
+    per run even for the same seed, deterministic-yet-distinct so it replays, m1);
+    causation_id links each event to its cause.
 ```
 
 ## The 3-pillar grading mechanics

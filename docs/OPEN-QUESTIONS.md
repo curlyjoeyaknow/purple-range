@@ -339,6 +339,77 @@ Unresolved decisions that block, slow, or shape the work. Maintained by the
   conservative pad; prefer `correlation_id`-based correlation where the log
   format carries it; revisit Option B only if long-window drift bites.
 
+### Q-017 — Should the JSON-Schemas reject unknown keys (`additionalProperties: false`), or keep dropping them (forward-compat)?
+
+- **Raised:** 2026-05-31 (T-101 GATE A clean-room — NIT, left intentional)
+- **Type:** technical
+- **Blocks:** nothing today; shapes the strictness contract a downstream
+  strict-validation owner would change
+- **What we know:**
+  - The T-101 `contracts.SCHEMAS` deliberately do NOT set
+    `additionalProperties: false`, so an unknown key on a persisted shape is
+    **dropped, not rejected** on load.
+  - This is consistent with the additive/forward-compat charter (#2: new fields
+    are additive) — an older reader tolerates a newer writer's extra field.
+- **What we don't:** whether a future consumer needs typo-detection strictness
+  (a misspelled field silently vanishing) more than forward-compat tolerance.
+- **Options on the table:**
+  - A. Keep the current behaviour — unknown keys dropped; forward-compatible.
+    **Chosen default (intentional at T-101).**
+  - B. Set `additionalProperties: false` per schema — rejects unknown keys;
+    catches typos but breaks an older reader against a newer writer.
+- **Who needs to weigh in:** owner / downstream contract consumer
+- **Decision deadline:** before any shape needs strict cross-version validation
+- **Default if no decision by deadline:** Option A — forward-compat drop;
+  add `additionalProperties: false` only where a specific shape needs strictness.
+
+### Q-018 — Do `components` / `vulns` / `services` need a `minItems` cardinality floor?
+
+- **Raised:** 2026-05-31 (T-101 GATE A clean-room — NIT, left intentional)
+- **Type:** technical
+- **Blocks:** nothing today; an empty-list shape currently validates
+- **What we know:**
+  - The T-101 schemas put **no `minItems` floor** on `components` / `vulns` /
+    `services`, so a Scenario with zero components or a VulnManifest with zero
+    vulns is schema-valid.
+  - Consistent with the additive posture (a contract change to add a floor is a
+    tightening, deferrable until a concrete consumer relies on non-emptiness).
+- **What we don't:** which consumer first depends on a non-empty list (likely the
+  Scorer T-111 / generator T-202) — that consumer should set the floor it needs.
+- **Options on the table:**
+  - A. No floor at the contract layer; consumers assert their own non-emptiness.
+    **Chosen default (intentional at T-101).**
+  - B. Add `minItems: 1` floors now — rejects degenerate shapes at the boundary.
+- **Who needs to weigh in:** owner / Scorer (T-111) + generator (T-202) owner
+- **Decision deadline:** when T-111/T-202 land (they are the first real consumers)
+- **Default if no decision by deadline:** Option A — no contract-layer floor;
+  the first consumer that requires non-emptiness adds the `minItems` it needs.
+
+### Q-019 — Should port conformance verify method SIGNATURES, not just method presence?
+
+- **Raised:** 2026-05-31 (T-101 GATE A clean-room — NIT, left intentional)
+- **Type:** technical
+- **Blocks:** nothing today; tightens fake↔port conformance guarantees
+- **What we know:**
+  - The 8 ports are `@runtime_checkable` Protocols, so `isinstance(fake, Port)`
+    verifies **method presence, not signature** — a fake with a method of the
+    right name but wrong arity/params still passes the structural check.
+  - This is a known `typing.runtime_checkable` limitation, not a T-101 bug; the
+    static type-checker (when wired) catches signature drift.
+- **What we don't:** whether to add a signature-asserting conformance test (e.g.
+  `inspect.signature` comparison) or rely on a future static-type gate in CI.
+- **Options on the table:**
+  - A. Accept presence-only runtime checks; rely on a static type-check CI stage
+    for signature conformance. **Chosen default (intentional at T-101).**
+  - B. Add an `inspect.signature`-based conformance test per port/fake — catches
+    arity drift at runtime; more test machinery to maintain.
+- **Who needs to weigh in:** owner / whoever wires the static-type CI stage
+- **Decision deadline:** before the first parallel stream adds a real adapter
+  whose signature could drift from its port (S1/S2/S3 fan-out)
+- **Default if no decision by deadline:** Option A — presence-only runtime check
+  now; add a signature gate (or the static-type CI stage) before stream fan-out
+  if drift bites.
+
 ## Reserved ADR
 
 - **ADR-0006 — Containment authority: host-side-continuous (RESERVED 2026-05-30,

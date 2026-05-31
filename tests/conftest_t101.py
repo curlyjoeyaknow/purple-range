@@ -326,6 +326,58 @@ MALFORMED_CASES = {
 }
 
 
+# NESTED malformed cases — at least one per COMPOUND shape, exercising the
+# nested-container validation that bare {"type":"array"}/{"type":"object"}
+# schemas used to wave through. Each entry is (shape, description, mutator) and
+# load_<shape> MUST reject it. These are ADDITIVE to MALFORMED_CASES (which
+# stays one-per-shape and is NOT weakened).
+NESTED_MALFORMED_CASES = [
+    # scenario.components[] — a Component with wrong-typed name, bad kind enum,
+    # and a non-bool promisc (the exact repro from the internal review).
+    (
+        "scenario",
+        "component name/kind/promisc all malformed",
+        _set("components", [{"name": 123, "kind": "NONSENSE", "promisc": "not-a-bool"}]),
+    ),
+    # scenario.components[] — a single nested field wrong-typed (ram_mb str).
+    (
+        "scenario",
+        "component ram_mb wrong type",
+        lambda d: (d["components"][0].__setitem__("ram_mb", "lots"), d)[1],
+    ),
+    # vuln_manifest.victim — victim.ip wrong type (the repro: {"ip": 999}).
+    (
+        "vuln_manifest",
+        "victim ip wrong type",
+        _set("victim", {"ip": 999, "hostname": "h", "platform": "linux", "services": ["http"]}),
+    ),
+    # vuln_manifest.vulns[] — an array element that is not even an object.
+    (
+        "vuln_manifest",
+        "vulns element not a dict",
+        _set("vulns", ["not-a-dict"]),
+    ),
+    # vuln_manifest.vulns[].detect.calibration — a missing F1 calibration ref.
+    (
+        "vuln_manifest",
+        "vuln detect.calibration missing a ref",
+        lambda d: (d["vulns"][0]["detect"]["calibration"].pop("correct_ref"), d)[1],
+    ),
+    # vuln_manifest.vulns[].mitigate.deny_all_ref — missing F2 negative fixture.
+    (
+        "vuln_manifest",
+        "vuln mitigate.deny_all_ref missing",
+        lambda d: (d["vulns"][0]["mitigate"].pop("deny_all_ref"), d)[1],
+    ),
+    # detection_rule.calibration — wrong-typed nested ref.
+    (
+        "detection_rule",
+        "calibration.correct_ref wrong type",
+        lambda d: (d["calibration"].__setitem__("correct_ref", 7), d)[1],
+    ),
+]
+
+
 def fresh(name: str) -> dict:
     """A deep copy of the canonical valid instance for ``name``."""
     return copy.deepcopy(PERSISTED_SHAPES[name][0]())
