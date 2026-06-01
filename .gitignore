@@ -1,7 +1,3 @@
-# Claude Code runtime state (do not commit)
-.claude/state/
-.claude/logs/
-.claude/backups/
 
 # Vendored / pinned third-party clones (fetched into /mnt/data; see T-002).
 # NOTE: /mnt/data is an absolute HOST path that lives OUTSIDE this repo, so it

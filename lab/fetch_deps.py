@@ -147,7 +147,7 @@ class PendingPinError(FetchError):
         super().__init__(
             f"{name}: dependency pin not yet selected — refusing to fetch (an "
             f"unset pin must never masquerade as a fetched dep). See "
-            f"docs/OPEN-QUESTIONS.md (Q-011) for which commit + base box to pin."
+            f"the pinning notes for which commit + base box to pin."
         )
 
 
@@ -383,7 +383,7 @@ def _fetch_one(dep: DepSpec, fetcher: Fetcher, dest: Path) -> FetchResult:
 #: Non-empty (satisfies the resolved-dep gate) and intentionally not 64-hex.
 TOFU_PENDING_SHA256 = "TOFU-pending-first-fetch"
 
-# Pins copied verbatim from docs/ARCHITECTURE.md "Pinned versions" (charter #10,
+# Pinned versions (charter #10,
 # checked 2026-05-30). GOAD pins the v3.0.0 *commit* (ls-remote-resolved), never
 # the floating tag (→ Q-013). SecGen's commit is not selected yet (→ Q-011).
 _MANIFEST: tuple[DepSpec, ...] = (

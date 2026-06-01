@@ -10,9 +10,8 @@ half and couldn't be trusted to stay network-isolated.
 
 **Planning complete; awaiting architecture sign-off before build.**
 
-PRD, ARCHITECTURE, and ADR-0001 are written; the critic red-team is folded in
-and confirmed (GO-WITH-FIXES → fixes confirmed). See
-[`docs/RED-TEAM.md`](docs/RED-TEAM.md). No application code yet.
+Planning and architecture are complete; the red-team review is folded in and
+confirmed (GO-WITH-FIXES → fixes confirmed). No application code yet.
 
 ## Quickstart
 
@@ -27,18 +26,10 @@ and confirmed (GO-WITH-FIXES → fixes confirmed). See
 >
 > Until then, start with the docs below.
 
-## Documentation
+## Layout
 
-| Doc | Purpose |
-|---|---|
-| [`docs/PRD.md`](docs/PRD.md) | Product requirements — what it is, for whom, goals/non-goals |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System design, contract catalog, containment model |
-| [`docs/ADR/0001-manifest-oracle-event-sourced-scoring.md`](docs/ADR/0001-manifest-oracle-event-sourced-scoring.md) | The platform spine decision |
-| [`docs/BRAINSTORM.md`](docs/BRAINSTORM.md) | Society-of-minds brainstorm (feasibility, ideal design, red-team) |
-| [`docs/OPEN-QUESTIONS.md`](docs/OPEN-QUESTIONS.md) | Unresolved decisions + reserved ADRs + expert checkpoints |
-| [`docs/RED-TEAM.md`](docs/RED-TEAM.md) | Critic findings with resolution status |
-| [`docs/TODO.md`](docs/TODO.md) | Milestone spine (M0–M8) and open ADRs |
-| [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | What changed and when |
-
-See [`CLAUDE.md`](CLAUDE.md) for the project operating manual and
-[`ENGINEERING.md`](ENGINEERING.md) for the full engineering charter.
+- `lab/` — the `lab` CLI (provision, validate, score, panic) and event ledger.
+- `contracts/` — event/contract schemas (the platform spine).
+- `adapters/` · `ports/` — ports & adapters around the lab provider.
+- `scripts/` — dependency pinning and repository guards.
+- `tests/` — the test suite over the contracts, ports, and fakes.

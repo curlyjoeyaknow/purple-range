@@ -56,8 +56,6 @@ jobs:
         #     INTENTIONALLY trips shellcheck (e.g. SC2164 unguarded `cd` in the
         #     bad/good git-clone pins fixtures); shellcheck exits nonzero on
         #     warnings, which would falsely fail this PR's own CI.
-        #   * .claude/** — framework-scaffold hooks, not our deliverable
-        #     (the old markdown stage already excluded .claude).
         # Targeting scripts/ keeps REAL shellcheck coverage on our scripts while
         # never riding on fixtures/scaffold. Guarded: skips cleanly when no
         # scripts/*.sh exist yet (none do at T-003).
@@ -69,16 +67,12 @@ jobs:
             echo "stage:lint — no scripts/*.sh yet; shellcheck skipped"
           fi
       - name: yamllint (lenient)
-        # Lenient config (relaxed + line-length/document-start off). The
-        # inherited framework-scaffold workflow external-review.yml carries a
-        # known pre-existing duplicate-`env` issue tracked separately in
-        # docs/TODO.md (not this task's surface), so it is path-ignored here;
-        # all checks — including key-duplicates — stay ON for our own YAML.
+        # Lenient config (relaxed + line-length/document-start off); all checks
+        # — including key-duplicates — stay ON for our own YAML.
         run: |
           yamllint \
             -d "{extends: relaxed,
-                 rules: {line-length: disable, document-start: disable},
-                 ignore: '.github/workflows/external-review.yml'}" \
+                 rules: {line-length: disable, document-start: disable}}" \
             .
       - name: ansible-lint (only if playbooks exist)
         # SKIP-WHEN-ABSENT: real tool, runs once playbooks exist.

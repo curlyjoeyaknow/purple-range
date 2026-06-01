@@ -301,7 +301,7 @@ _COMPONENT_KIND_ENUM = ["VM", "CONTAINER"]
 # Nested sub-schemas for the compound shapes. Declared here so the (already
 # nested-aware) validator engine actually validates nested containers instead
 # of waving through a bare {"type": "array"} / {"type": "object"}. Each is the
-# canonical shape from docs/ARCHITECTURE.md (Component / victim / vuln / the
+# canonical shape (Component / victim / vuln / the
 # calibration + detect + mitigate sub-objects).
 # --------------------------------------------------------------------------
 
