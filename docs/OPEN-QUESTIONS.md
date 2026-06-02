@@ -502,6 +502,28 @@ Unresolved decisions that block, slow, or shape the work. Maintained by the
   the Q-020 rewrite of `append`/`_chain` (the rewrite already touches this path); otherwise
   Option A (document the precondition at the call site).
 
+### Q-022 — `score_awarded` → `verification_result` binding: behavioral now, strict-ref at T-203 [DECIDED-for-T-111, deferred-strengthening]
+
+- **Raised:** 2026-06-02 (T-111 Scorer `tester`, spec fork flagged on ADR-0001 §4 "bound to `verification_ref` AND `manifest_ref`").
+- **Type:** technical / scoring-integrity contract
+- **The fork:** ADR-0001 §4 says an award is bound to `verification_ref`, but `ref`/`seq`
+  is store-assigned at append time, so a pure-core fixture can't assert
+  `verification_ref == <specific seq>` without brittle seq-arithmetic.
+- **DECIDED for T-111 (behavioral binding):** an award for pillar P / correlation C
+  counts **iff** the log holds a **PASSING `verification_result` for C whose `oracle`
+  matches pillar P** — bound per `(correlation_id, pillar↔oracle)`, not "any passing
+  verification on the correlation." This enforces the honest-scoring property ("no score
+  without a proven pass") that §4 protects. The awarding path MUST still populate
+  `verification_ref` with the bound verification's identity so the audit chain
+  award→verification→manifest exists.
+- **DEFERRED to T-203 (strict-ref resolution):** once the live pipeline assigns concrete
+  refs/seqs, add the negative test that an award whose `verification_ref` does NOT resolve
+  to a specific passing-verification seq is rejected. The current T-111 behavioral tests
+  stay valid under both readings.
+- **GATE A note:** if the fresh clean-room reviewer judges the behavioral binding too weak
+  for the spine, escalate — but the property (no score without a matching passing
+  verification) is enforced now; only the *ref-exactness* is deferred.
+
 ## Reserved ADR
 
 - **ADR-0006 — Containment authority: host-side-continuous (RESERVED 2026-05-30,
