@@ -437,9 +437,58 @@ Unresolved decisions that block, slow, or shape the work. Maintained by the
   - C. **Cross-check the column against the payload** in the reducer (dispatch on the
     column but assert it matches a payload-derived shape; mismatch → ungradeable).
     Cheapest; keeps the denormalized column but closes the tamper hole.
+  - D. **Frame `event_type` into the hash alongside `payload`** (NOT into the payload
+    dict), the way `prev_hash` already is:
+    `row_hash = sha256(prev_hash_bytes + \x00 + event_type_bytes + \x00 + canonical_bytes)`.
+    Raised by the 2026-06-02 `external-reviewer`. Makes `event_type` tamper-evident
+    **without** changing the canonical payload bytes — so `payload` stays exactly
+    `canonical_json(dump(event))` and the **independent** conformance oracle
+    `conftest_t110.canonical_bytes_of` survives intact (Option A, by contrast, forces
+    editing that oracle and makes `payload` no longer a faithful serialization).
+    Localized to `framed_row_hash` + `chain_batch` (pass `event_type`) +
+    `verify_rows`/`verify_chain` (also SELECT + frame `event_type`). Same chain-breaking
+    migration cost as A, but cleaner; keeps `event_type` a real separately-stored column
+    that happens to be authenticated rather than smuggled into the event.
+- **Whichever option wins, the fix MUST land a negative test** —
+  `test_verify_chain_detects_tampered_event_type` — the current suite has NO test that
+  tampers a non-`payload` column, which is exactly how this slipped through.
 - **Who needs to weigh in:** `architect` (contract impact) + `critic` (tamper-evidence) at the top of T-111.
 - **Decision deadline:** start of T-111.
-- **Default if no decision by deadline:** Option A (additive field) — it's the only one that makes the discriminator first-class and tamper-evident; do it via a short ADR-0007 addendum + critic pass.
+- **Default if no decision by deadline:** **Option D (frame-it)** — preferred over A on
+  oracle-preservation grounds (keeps `payload == canonical_json(dump(event))` and leaves
+  the independent test oracle unedited); confirm with `architect` + `critic` via a short
+  ADR-0007 addendum. (Updated 2026-06-02 from A → D after the external review; A remains
+  the fallback if framing proves to interact badly with re-hydration.)
+
+### Q-021 — Should `append` harden the tip-read into its transaction, or rely on the single-writer scope? [non-blocking]
+
+- **Raised:** 2026-06-02 (T-110 `external-reviewer`, 🟠 — see [`docs/RED-TEAM.md`](RED-TEAM.md) 2026-06-02)
+- **Type:** technical / concurrency
+- **Blocks:** nothing for the MVP (single-writer). Revisit if a second writer is ever introduced.
+- **What we know:**
+  - `SqliteEventStore.append` reads the chain tip via `_tip()` **outside** the
+    transaction (`event_store.py:71`), then `chain_batch` computes off it (`:74`),
+    then `BEGIN`/`executemany`/`commit` (`:76-85`). Nothing holds a write lock across
+    the read→write gap.
+  - Safe today **only** because of the ADR-0005 single-writer scope — lore that is
+    invisible at the `append` call site. The T-110 tests themselves open second
+    connections to the same file.
+  - **Integrity is NOT at risk** under a concurrent writer: `seq` is `PRIMARY KEY`, so a
+    duplicate-`seq` insert raises `IntegrityError` → rollback. No silent fork/corruption.
+    The only exposure is **spurious append failures** under concurrency.
+- **What we don't:** whether the project will ever want more than one writer (the current
+  architecture says no).
+- **Options:**
+  - A. **Leave it** — document the single-writer precondition at the `append` call site
+    (a comment + an ADR-0005 pointer). Zero code change; honest about the assumption.
+  - B. **Harden now** — `BEGIN IMMEDIATE` and read the tip *inside* the transaction, so the
+    read→write window is atomic and a second writer blocks rather than spuriously failing.
+    Cheap, localized, makes the code correct without leaning on lore.
+- **Who needs to weigh in:** `architect` (is single-writer a permanent invariant?).
+- **Decision deadline:** at or after T-111 (not a GATE-A blocker).
+- **Default if no decision by deadline:** Option B (harden) **if** it lands for free during
+  the Q-020 rewrite of `append`/`_chain` (the rewrite already touches this path); otherwise
+  Option A (document the precondition at the call site).
 
 ## Reserved ADR
 

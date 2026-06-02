@@ -43,6 +43,31 @@ F1/F2/F3 below closed).
 
 ---
 
+## 2026-06-02 — external `external-reviewer` on T-110 (fresh-context, diff-only)
+
+> Target: T-110 diff `e01bbbc..a572c88` (`adapters/`, `tests/`, `conftest.py`) handed as `/tmp/t110.diff` + ADR-0007 only — no project lore.
+> Invoked by: pm-orchestrator (post internal-review cheap-fix pass `a572c88`, pre-GATE-A). Fresh-eyes read of framing/verify/transaction code + independent take on [[Q-020]].
+> Verdict: chain math well-centralized and trusted; **two findings of substance** + readability nits. All independently re-verified against source before recording.
+
+**Independent confirmation of [[Q-020]] (🔴, agrees with internal review) — AND a cleaner fix shape.** Traced from the outside: `chain_batch` hashes `payload = canonical_payload(contracts.dump(event) + seq + prev_hash)` (`_chain.py:243`); `event_type` is derived *separately* via `_event_type_of(event)` (`:245`) and never enters `row`/`payload`; `verify_rows`/`verify_chain` re-read only `(seq, prev_hash, payload, row_hash)` (`event_store.py:107-110`). So `UPDATE events SET event_type=… ` leaves `verify_chain()` `True` — a tamper blind-spot in the exact field ADR §5 says reducers dispatch on. Blast radius is live *because* of this architecture.
+  - **Argues AGAINST the ADR default (inject `event_type` as a key into the hashed payload):** that changes the canonical bytes of every event and forces editing the *independent* conformance oracle `conftest_t110.canonical_bytes_of` (so the test no longer checks the store against a contracts-level definition), and it makes `payload` no longer a faithful `canonical_json(dump(event))` — a stray key for any future `contracts.load_<shape>` re-hydration (ADR §1a).
+  - **Proposes instead — frame `event_type` into the hash alongside `payload`, the way `prev_hash` already is:** `row_hash = sha256(prev_hash_bytes + \x00 + event_type_bytes + \x00 + canonical_bytes)`. Keeps `payload == canonical_json(dump(event))` (oracle survives intact), keeps "hash the bytes you persist" honest, and localizes the change to `framed_row_hash` + `chain_batch` (pass `event_type`) + `verify_rows`/`verify_chain` (must also SELECT + frame `event_type`). Same chain-breaking migration cost as the inject option, but cleaner. **→ This becomes a third candidate (Option C) for the Q-020 decision; carry into the T-111-opening architect+critic.** **pm verified all premises against source 2026-06-02** (event_type genuinely outside payload; oracle would indeed have to change under the inject option).
+  - **Also flags the missing negative test:** the suite covers edit/reorder/delete/insert of `payload` but has **no test that tampers a non-`payload` column** — precisely how this slipped through. The Q-020 fix MUST land `test_verify_chain_detects_tampered_event_type`.
+
+**🟠 NEW — `append`'s tip-read sits OUTSIDE its transaction (unguarded single-writer assumption).** `_tip()` reads the chain tip (`event_store.py:71`), `chain_batch` computes off it (`:74`), THEN `BEGIN`/`executemany`/`commit` (`:76-85`) — nothing holds a write lock across the read→write gap. Safe *today* only because of the ADR-0005 single-writer scope, which is **lore invisible at the `append` call site**; the tests themselves open second connections to the same file. **pm re-verified + corrected the severity:** the reviewer's "silently forked chain" worst-case is NOT reachable — `seq` is `PRIMARY KEY`, so a concurrent duplicate-`seq` insert raises `IntegrityError` → rollback (no silent corruption). Real exposure = **spurious failures under concurrent writers**, not integrity loss. Clean hardening: `BEGIN IMMEDIATE` + read the tip *inside* the transaction. **Logged as [[Q-021]]; non-blocking for the single-writer MVP, decide at/after T-111.**
+
+**🟡 Readability nits (fold into the Q-020 rewrite — it touches these exact lines):**
+- `_event_type_of` docstring (`_chain.py:201-207`) is garbled mid-sentence ("the persisted row's `event_type` would-be field is NOT a dataclass attribute…") — rewrite when the framing fix edits this function.
+- `public_row` strips keys by `startswith("_")` (`_chain.py:152`) — a string-prefix convention doing load-bearing work; an event field named with a leading underscore would be silently dropped. Add a guard/comment.
+- `fold(..., "WHERE 1=1")` (`event_store.py:94`) — SQL fragment as arg; a `where=""` default reads cleaner.
+- `verify_rows` positional unpack couples to the SELECT column ORDER in a different module (`event_store.py:107-110` ↔ `_chain.py:155`) — reorder the SELECT and verification silently hashes the wrong field. Comment or named-tuple.
+- `close()` docstring claims "Idempotent" but asserts a property of stdlib `sqlite3`, not of this code; post-`close()` method calls raise opaque `ProgrammingError`. Soften the doc.
+- Test tamper at `test_event_store_t110.py` grabs `seq=1` (`scenario_generated`, whose payload has no `"attack"` substring) so the `replace("attack",…)` branch is dead and falls through to the whitespace branch — still asserts correctly, but misleading. (low)
+
+**Disposition:** No code touched now — the cheap nits fold into the imminent Q-020 rewrite of `_chain.py`/`event_store.py` (avoids double-touching the same lines pre-GATE-A). Q-020 gains **Option C (frame-it)** as the now-preferred shape; **Q-021** opened for the tip-read race.
+
+---
+
 ## 2026-05-30 — `/critique` on the planning bootstrap (PRD + ARCHITECTURE + ADR-0001)
 
 > Target: `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/ADR/0001-manifest-oracle-event-sourced-scoring.md`
