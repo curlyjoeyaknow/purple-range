@@ -133,8 +133,9 @@ class InMemoryEventStore:
     """
 
     def __init__(self) -> None:
-        # Each item is a persisted row: the §1a public dict plus the private
-        # ``_event_type`` / ``_payload`` bookkeeping the chain math carries.
+        # Each item is a persisted row: the §1a public dict (now incl. the
+        # first-class ``event_type`` key, Addendum 1) plus the private
+        # ``_payload`` bookkeeping the chain math carries.
         self._rows: list[dict] = []
 
     def append(self, events: list) -> list:
@@ -160,8 +161,18 @@ class InMemoryEventStore:
         return iter([_chain.public_row(r) for r in self._rows if r["seq"] >= seq])
 
     def verify_chain(self) -> bool:
+        # Key-based hand-off (Addendum 1): same dict shape the SQLite adapter
+        # builds, sourcing event_type from the first-class key and payload from
+        # the private canonical-string carry.
         rows = [
-            (r["seq"], r["prev_hash"], r["_payload"], r["row_hash"]) for r in self._rows
+            {
+                "seq": r["seq"],
+                "prev_hash": r["prev_hash"],
+                "event_type": r["event_type"],
+                "payload": r["_payload"],
+                "row_hash": r["row_hash"],
+            }
+            for r in self._rows
         ]
         return _chain.verify_rows(rows)
 

@@ -312,14 +312,18 @@ def test_row_hash_is_framed_input(sqlite_path):
     finally:
         conn.close()
 
+    persisted_row_hashes = []
     for seq, prev_hash, event_type, payload, row_hash in persisted:
         expected = fx.framed_row_hash(prev_hash, event_type, payload.encode("utf-8"))
         assert row_hash == expected, (
             f"row {seq}: row_hash must be the framed sha256 of "
             "prev_hash_bytes + 0x00 + event_type_bytes + 0x00 + persisted canonical bytes"
         )
+        persisted_row_hashes.append(row_hash)
     # And the returned dicts agree with the persisted row_hashes (no divergence).
-    assert [r["row_hash"] for r in rows] == [p[3] for p in persisted]
+    # (Collect by name above — not a positional p[i] — so widening the SELECT
+    # can't silently shift this comparison onto the wrong column.)
+    assert [r["row_hash"] for r in rows] == persisted_row_hashes
 
 
 # ==========================================================================

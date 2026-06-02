@@ -78,7 +78,7 @@ class SqliteEventStore:
                 "INSERT INTO events (seq, event_type, payload, prev_hash, row_hash) "
                 "VALUES (?, ?, ?, ?, ?)",
                 [
-                    (r["seq"], r["_event_type"], r["_payload"], r["prev_hash"], r["row_hash"])
+                    (r["seq"], r["event_type"], r["_payload"], r["prev_hash"], r["row_hash"])
                     for r in persisted
                 ],
             )
@@ -91,7 +91,7 @@ class SqliteEventStore:
     def fold(self, reducer: Any, init: Any) -> Any:
         """Reduce the whole log from genesis, in ``seq`` order, deterministically."""
         acc = init
-        for row in self._iter_rows("WHERE 1=1"):
+        for row in self._iter_rows(""):
             acc = reducer(acc, row)
         return acc
 
@@ -104,15 +104,27 @@ class SqliteEventStore:
 
     def verify_chain(self) -> bool:
         """§2 verdict: True on an intact (or empty) chain, False on any tamper."""
-        rows = self._conn.execute(
-            "SELECT seq, prev_hash, payload, row_hash FROM events ORDER BY seq"
-        ).fetchall()
+        cur = self._conn.execute(
+            "SELECT seq, prev_hash, event_type, payload, row_hash FROM events ORDER BY seq"
+        )
+        # Key-based hand-off to verify_rows (Addendum 1, non-negotiable): build a
+        # list[dict] column->value so a future SELECT reorder cannot mis-hash.
+        rows = [
+            {
+                "seq": seq,
+                "prev_hash": prev_hash,
+                "event_type": event_type,
+                "payload": payload,
+                "row_hash": row_hash,
+            }
+            for seq, prev_hash, event_type, payload, row_hash in cur
+        ]
         return _chain.verify_rows(rows)
 
     # -- lifecycle -------------------------------------------------------
 
     def close(self) -> None:
-        """Close the underlying connection. Idempotent — safe to call twice."""
+        """Close the underlying connection (sqlite3 tolerates a redundant close)."""
         self._conn.close()
 
     def __enter__(self) -> SqliteEventStore:
@@ -141,9 +153,11 @@ class SqliteEventStore:
         the stored ``row_hash``, never the caller's frozen dataclass.
         """
         cur = self._conn.execute(
-            f"SELECT payload, row_hash FROM events {where} ORDER BY seq", params
+            f"SELECT payload, row_hash, event_type FROM events {where} ORDER BY seq",
+            params,
         )
-        for payload, row_hash in cur:
+        for payload, row_hash, event_type in cur:
             row = json.loads(payload)
             row["row_hash"] = row_hash
+            row["event_type"] = event_type  # first-class discriminator (Addendum 1)
             yield row

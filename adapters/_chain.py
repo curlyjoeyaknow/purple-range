@@ -43,16 +43,22 @@ GENESIS_SENTINEL = "0" * 64
 _log = logging.getLogger("purple_range.event_store")
 
 
-def framed_row_hash(prev_hash: str, canonical_bytes: bytes) -> str:
-    """The §0 FRAMED row hash: ``sha256(prev_hash_bytes + 0x00 + canonical_bytes)``.
+def framed_row_hash(prev_hash: str, event_type: str, canonical_bytes: bytes) -> str:
+    """The §0 FRAMED row hash, now a 3-field frame (ADR-0007 Addendum 1 / Q-020).
 
-    The one-byte NUL separator cannot occur in a hex token or in
+    ``sha256(prev_hash_bytes + 0x00 + event_type_bytes + 0x00 + canonical_bytes)``.
+    The one-byte NUL separators cannot occur in a hex token, in a snake_case
+    ``event_type`` (derived from a Python identifier, NUL-free), or in
     ``separators=(",",":")`` canonical JSON, so the input is self-delimiting and
     a future hash-encoding change is loudly different bytes, not a silent
-    chain corruption (ADR §0 rationale).
+    chain corruption (ADR §0 rationale). ``event_type`` is encoded ``utf-8`` (not
+    ``ascii``) so a future non-ASCII event class name cannot raise here (critic
+    🟡-1).
     """
     return hashlib.sha256(
-        prev_hash.encode("ascii") + b"\x00" + canonical_bytes
+        prev_hash.encode("ascii") + b"\x00"
+        + event_type.encode("utf-8") + b"\x00"
+        + canonical_bytes
     ).hexdigest()
 
 
@@ -119,17 +125,21 @@ def chain_batch(tip_seq: int, tip_hash: str, events: list) -> list[dict]:
       2. OVERWRITES the caller's ``seq``/``prev_hash`` with the assigned values
          (``seq = prev_seq + 1``; ``prev_hash`` = the prior row's ``row_hash``,
          or the tip's, or the genesis sentinel),
-      3. canonicalizes (no-NaN, §0) and computes the framed ``row_hash``,
+      3. canonicalizes (no-NaN, §0) and computes the framed ``row_hash`` over the
+         3-field frame (``prev_hash``, ``event_type``, ``payload`` — Addendum 1),
       4. produces the persisted row: the patched dict + ``row_hash`` + the
-         ``event_type`` + the canonical ``payload`` string the store stores.
+         first-class ``event_type`` key + the canonical ``payload`` string.
 
     Returns the list of persisted rows in ``seq`` order. Raises (ValueError /
     SchemaError) on the FIRST invalid event WITHOUT having mutated any store —
     the caller commits the returned rows as one transaction, so a raise here is
     an all-or-nothing rollback (§4).
 
-    The returned dicts carry two private bookkeeping keys the persistence layer
-    strips before handing rows to callers: ``_event_type`` and ``_payload``.
+    ``event_type`` is a first-class (non-underscore) key — it survives
+    ``public_row`` and lands on the yielded dict so reducers can dispatch on
+    ``row["event_type"]`` (Addendum 1). The returned dicts also carry ONE private
+    bookkeeping key the persistence layer strips before handing rows to callers:
+    ``_payload`` (the internal canonical string the store persists).
     """
     rows: list[dict] = []
     prev_seq = tip_seq
@@ -139,11 +149,15 @@ def chain_batch(tip_seq: int, tip_hash: str, events: list) -> list[dict]:
         seq = prev_seq + 1
         row["seq"] = seq
         row["prev_hash"] = prev_hash
+        # ``payload`` stays byte-for-byte ``canonical_json(dump(event)+seq+prev_hash)``:
+        # ``event_type`` is hashed ADJACENT to it (the frame), NOT injected into it
+        # (Addendum 1 rejects Option A — keeps the independent conformance oracle).
         payload = canonical_payload(row)  # raises on non-finite / non-JSON evidence
-        row_hash = framed_row_hash(prev_hash, payload.encode("utf-8"))
+        event_type = _event_type_of(event)  # computed BEFORE hashing (Addendum 1)
+        row_hash = framed_row_hash(prev_hash, event_type, payload.encode("utf-8"))
+        row["event_type"] = event_type  # first-class key on the persisted/yielded row
         row["row_hash"] = row_hash
-        event_type = _event_type_of(event)
-        rows.append({**row, "_event_type": event_type, "_payload": payload})
+        rows.append({**row, "_payload": payload})
         prev_seq = seq
         prev_hash = row_hash
     return rows
@@ -154,21 +168,31 @@ def public_row(persisted: dict) -> dict:
     return {k: v for k, v in persisted.items() if not k.startswith("_")}
 
 
-def verify_rows(rows: list[tuple[int, str, str, str]]) -> bool:
-    """The §2 verdict over persisted ``(seq, prev_hash, payload, row_hash)`` rows.
+def verify_rows(rows: list[dict]) -> bool:
+    """The §2 verdict over persisted rows, read BY NAME (Addendum 1, non-negotiable).
+
+    Each ``row`` is a ``dict`` with keys ``seq``, ``prev_hash``, ``event_type``,
+    ``payload``, ``row_hash`` — read by name so a future SELECT column reorder (or
+    a divergence between this and ``_iter_rows``) cannot silently mis-hash a field.
 
     ``rows`` MUST already be ordered by ``seq`` ascending. Returns True iff the
     chain is intact, False (never raises for a tamper case) on any edit, reorder,
-    deletion, or insertion. Re-hashes the STORED ``payload`` bytes — never a
-    re-parsed object (§0 "verify by re-reading the bytes you persist"). On a
-    False verdict, logs the FIRST bad ``seq`` (§2 / M3) while the public return
-    stays a bare bool.
+    deletion, or insertion. Re-hashes the STORED ``event_type`` + ``payload``
+    bytes — never a re-parsed object, never a re-derived ``event_type`` (§0 /
+    Addendum 1: "verify by re-reading the bytes you persist", for BOTH fields).
+    On a False verdict, logs the FIRST bad ``seq`` (§2 / M3) while the public
+    return stays a bare bool.
 
     An empty store ([]) is trivially True.
     """
     expected_seq = 1
     prev_hash = GENESIS_SENTINEL
-    for seq, row_prev_hash, payload, row_hash in rows:
+    for row in rows:
+        seq = row["seq"]
+        row_prev_hash = row["prev_hash"]
+        event_type = row["event_type"]
+        payload = row["payload"]
+        row_hash = row["row_hash"]
         if seq != expected_seq:
             _log.warning(
                 "verify_chain: chain broken at seq=%s (expected gap-free seq=%s: "
@@ -184,7 +208,7 @@ def verify_rows(rows: list[tuple[int, str, str, str]]) -> bool:
                 seq,
             )
             return False
-        recomputed = framed_row_hash(row_prev_hash, payload.encode("utf-8"))
+        recomputed = framed_row_hash(row_prev_hash, event_type, payload.encode("utf-8"))
         if recomputed != row_hash:
             _log.warning(
                 "verify_chain: chain broken at seq=%s (stored row_hash does not "
@@ -200,9 +224,10 @@ def verify_rows(rows: list[tuple[int, str, str, str]]) -> bool:
 def _event_type_of(event: Any) -> str:
     """Map a contract dataclass instance to its snake_case ``event_type`` token.
 
-    ``ScenarioGenerated`` -> ``scenario_generated`` etc. Used to populate the
-    ``events.event_type`` column and the persisted row's ``event_type`` would-be
-    field is NOT a dataclass attribute, so it is derived from the class name.
+    ``ScenarioGenerated`` -> ``scenario_generated``, ``AttackExecuted`` ->
+    ``attack_executed``, etc. ``event_type`` is NOT a dataclass attribute, so it
+    is derived here from the class name and used both to populate the
+    ``events.event_type`` column and to seed the §0/Addendum-1 framed row hash.
     """
     name = type(event).__name__
     out = []
