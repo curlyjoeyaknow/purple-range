@@ -523,6 +523,22 @@ Unresolved decisions that block, slow, or shape the work. Maintained by the
 - **GATE A note:** if the fresh clean-room reviewer judges the behavioral binding too weak
   for the spine, escalate — but the property (no score without a matching passing
   verification) is enforced now; only the *ref-exactness* is deferred.
+- **Two tightenings surfaced at T-111 GREEN (`c699e9a`) — resolve before/at GATE A:**
+  1. **`oracle` vocabulary divergence.** `VerificationResult.oracle` is free-text
+     (`{"type":"string"}`, no enum — so no validation bug), but ADR-0001 §3 names the
+     oracle *types* `{manifest, ground_truth, reattack}` while `core/scorer.py` graders
+     emit *pillar* names `{attack, detect, mitigate}`. Reconcile one way (recommend:
+     adopt the ADR oracle-type names + a `pillar→oracle` map, binding
+     `verification.oracle == ORACLE_FOR[award.pillar]`). The spine's contracts reviewer
+     will check this.
+  2. **Per-pillar binding is implemented but NOT exercised.** `conftest_t111.verification_result`
+     defaults `oracle="manifest"` for *every* pillar, so the reducer's `_oracle_matches`
+     keeps a generic-`"manifest"`-covers-any-pillar escape hatch purely to satisfy the
+     fixtures; no test proves a wrong-pillar verification is *rejected*. Tighten the
+     fixtures to per-pillar oracles + add `test_verification_for_wrong_pillar_does_not_license_award`,
+     then drop the generic escape hatch. (Production is correct today only because the
+     graders emit pillar-tagged oracles; the hole is unreachable in prod, but the spine
+     should *prove* it, not rely on it.)
 
 ## Reserved ADR
 

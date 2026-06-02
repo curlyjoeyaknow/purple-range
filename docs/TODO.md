@@ -384,12 +384,14 @@ M8  T-801 harness tiers ─ T-802 pair-rotation/no-residue ─ T-803 reproducibi
   the store hash-chain ADR) precedes the chain impl.
 
 ### T-111  Scorer — 3-pillar grading logic (pure core)                [CRITICAL]
-- **Status (2026-06-02): Q-020 precursor DONE** — `event_type` discriminator is now
-  tamper-evident + on the read surface (ADR-0007 Addendum 1, Option D;
-  `48d6f53`→`bfa7ecf`→`af74ea2`; 340 green). The reducer can dispatch on
-  `row["event_type"]`. **Remaining = the 3-pillar reducer below.** Residual: D
-  authenticates `event_type` immutability, not correspondence to its payload — add an
-  Option-C cross-check at reducer-design time if dispatch must trust the match.
+- **Status (2026-06-02): GREEN — Scorer pure core built** (`66ca3c0` RED → `c699e9a`
+  GREEN; **366 passed, 6 skipped**, ruff clean). `core/scorer.py`: per-pillar graders +
+  event-sourced reducer + immutable `Scoreboard`, ports-clean (imports only contracts +
+  typing). Q-020 precursor (event_type framing, Addendum 1) done earlier this session.
+  **Remaining before this task closes: GATE A** (the spine gate — see below) + the two
+  [[Q-022]] tightenings (oracle vocabulary vs ADR-0001; prove per-pillar binding). The
+  Option-C `event_type`↔payload correspondence residual is recorded but not needed unless
+  dispatch must trust the match.
 - Depends on: T-110 (EventStore), T-101 (manifest/rule/event shapes + fakes)
 - Contract surface: `core/scorer` (pure) — consumes `VulnManifest`,
   ground-truth, `submission`; emits `verification_result(v2)` + `score_awarded(v2)`;

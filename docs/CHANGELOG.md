@@ -35,6 +35,24 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
   — non-blocking, split-by-default follow-up).
 
 ### Added
+- T-111: **3-pillar Scorer pure core (the honest-scoring engine)** — `core/scorer.py`
+  + `core/__init__.py` (new pure-core package). Per-pillar graders
+  (`grade_attack` / `grade_detect` / `grade_detect_via_telemetry` / `grade_mitigate`)
+  each return a `VerificationResult` bound to `manifest_hash`; the event-sourced
+  `score_reducer` / `derive_scoreboard` fold the EventStore log (dispatching on the
+  tamper-evident `event_type`) into an immutable `Scoreboard` (`points_for` /
+  `status_of` / `awarded_keys`, value `==` for replayability). Honest grading per
+  ADR-0001 §3: ATTACK scores only on a *landed* (`outcome:success`) manifest TTP (a
+  flaky attack neither scores nor penalizes DETECT); DETECT is three-window TP+FP with
+  `skew_budget`/`clock_offset` reconciliation (match-everything fails FP, match-nothing
+  fails TP); MITIGATE needs reattack `blocked` AND a healthy `service_probe`. Reducer
+  enforces the honesty gate (no score without a passing verification for the
+  correlation+pillar), `(scenario,challenge,pillar,manifest_hash)` idempotency (seed
+  re-roll → distinct key → both score), and folds un-terminated/aborted runs to
+  UNGRADEABLE/ABORTED — never an implicit pass. `core/` imports only `contracts` +
+  stdlib (ports-clean, no sqlite3/adapters/vendor). 26 tests (RED `66ca3c0` → GREEN
+  `c699e9a`); full suite **366 passed, 6 skipped**. Two oracle-binding tightenings
+  tracked for GATE A ([[Q-022]]). See [`docs/TODO.md`](TODO.md) T-111.
 - T-110: **Hash-chained SQLite EventStore (the scoring spine's persistence)** —
   `adapters/event_store.py` (`SqliteEventStore`, stdlib `sqlite3` only, table
   `events(seq, event_type, payload, prev_hash, row_hash)`, `PRAGMA
