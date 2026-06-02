@@ -1,10 +1,10 @@
-# HANDOFF — 2026-06-02 (T-101 MERGED #9; T-100/T-110 EventStore + T-111 Scorer ALL BUILT+GREEN [366 passed], tip c699e9a; NEXT: GATE A — the spine gate)
+# HANDOFF — 2026-06-02 (T-101 MERGED #9; M1b spine T-100/T-110/T-111 ALL BUILT+GREEN [366 passed], branch tip 6f06416; NEXT: GATE A — the spine gate)
 
 > Written by `docs-keeper`. Resume `/deliver` from "Next concrete step" with zero momentum lost.
 
 ## Current state in one paragraph
 
-Purple Range is a clean rebuild of the messy `/home/memez/cyber-range` (READ-ONLY reference) into a purple-team CTF/lab platform with 3-pillar scoring (ATTACK → DETECT → MITIGATE). Pre-build pipeline COMPLETE, **M0 COMPLETE**, and **M1a / T-101 = the CONTRACT LOCK is now MERGED to `main`** via **PR #9** (squash commit `a76e3f7`) — **all 10 CI stages green** (incl. `lint` and `unit` = `pytest tests/ -q`). T-101 delivered, in one sequenced surface: **`contracts/`** — 13 versioned shapes with `load_<shape>`/`SchemaError` (nested validation), lossless `dump()` (version-first, deepcopy), stdlib-validated `SCHEMAS`, plus `canonical_json` / `manifest_hash` / `idempotency_key` / `mint_correlation_id`; **`ports/`** — 8 `@runtime_checkable` Protocols; **`adapters/`** — 8 fakes + `REGISTRY`; and `lab/cli.py` **F-006** (Rng-minted `run_id`, `uuid4` gone) + **F-007** (`HANDLERS` dispatch table). Quality trail: internal review fixed **B1** (nested validation) + **B2** (`dump` aliasing) + **S1** (schema/loader agreement); a fresh clean-room review of the **T-101 leg** PASSed on loop 1/4 with no blockers; CI also surfaced ruff debt (`I001`/`E702`) on the tester-locked test files that the review chain missed (no reviewer ran `ruff check .`) — fixed mechanically before merge. 3 NIT smells logged as **Q-017/18/19** (intentional / forward-compat). **294 passed, 6 skipped** (pinned pytest 8.3.4) — there is NO project virtualenv; local runs use a throwaway venv and **CI is the source of truth**. ⚠️ **GATE A is NOT fully closed:** per `docs/DELIVERY-PLAN.md` GATE A spans **T-101 + T-110 + T-111** and requires **TWO independent fresh clean-room reviewers, both must PASS** (reviewer 1 = contracts/fake-conformance ✓ done on the T-101 leg; reviewer 2 = hash-chain integrity + fold/replay determinism + idempotency/seed-reroll — fires AFTER T-111). Current branch: `feat/t-100-t-110-eventstore` (off merged `main`, no commits yet beyond this handoff).
+Purple Range is a clean rebuild of the messy `/home/memez/cyber-range` (READ-ONLY reference) into a purple-team CTF/lab platform with 3-pillar scoring (ATTACK → DETECT → MITIGATE), event-sourced with manifest-as-oracle. **M0 COMPLETE** (7 tasks merged to `main`); **M1a / T-101 = the CONTRACT LOCK is MERGED to `main`** via **PR #9** (squash `a76e3f7`, all 10 CI checks green) — `contracts/` (13 versioned shapes + loaders + `canonical_json`/`manifest_hash`/`idempotency_key`), `ports/` (8 Protocols), `adapters/` (8 fakes + `REGISTRY`). **M1b — the entire MVP scoring spine — is now BUILT + GREEN on branch `feat/t-100-t-110-eventstore` (tip `6f06416`), NOT yet merged, awaiting GATE A:** (1) **T-100** ADR-0007 + **Addendum 1** (the hash-chained SQLite EventStore design; tamper-EVIDENCE not -resistance; Addendum 1 = Q-020 resolution, Option D, frame `event_type` into the row hash); (2) **T-110** `SqliteEventStore` + `adapters/_chain.py` shared chain math + upgraded `InMemoryEventStore` (hash-chained, `verify_chain` re-reads persisted bytes, atomic batch append, `fold`/`replay_from` yield persisted dicts) — internal + external review chain complete; (3) **T-111** the event_type-framing change (`af74ea2`) AND **`core/scorer.py`** — the 3-pillar honest-scoring pure core: per-pillar graders (`grade_attack`/`grade_detect`/`grade_detect_via_telemetry`/`grade_mitigate`) + event-sourced `score_reducer`/`derive_scoreboard` + immutable `Scoreboard`, ports-clean (imports only `contracts` + stdlib). **Full suite 366 passed, 6 skipped** (pinned pytest 8.3.4) — there is NO project virtualenv; local runs use a throwaway venv (`/tmp/prvenv`) and **CI is the source of truth**. ⚠️ **GATE A is the immediate next step and is NOT yet run for the full spine:** per `docs/DELIVERY-PLAN.md` it spans **T-101 + T-110 + T-111**, adversarial, budget 4, MVP-BLOCKING, **TWO independent fresh clean-room reviewers, both must PASS** (R1 contracts/schema — the T-101 leg PASSed loop 1, re-confirm with T-110/T-111 layered on; R2 = chain integrity + fold/replay determinism + Scorer honesty/idempotency/seed-reroll). Two oracle-binding tightenings (**Q-022**) must be fed to the reviewers. On both-PASS → open the PR → green CI → squash-merge → **M2 (T-201 LabProvider)**.
 
 ## Workspace topology (KEEP STRAIGHT — do not cross-contaminate)
 
@@ -20,8 +20,8 @@ This SESSION runs from `/home/memez/dev-bootstrap`, so the Task tool only resolv
 
 ## What I was doing when I stopped
 
-- **Task:** Closed out T-101 end-to-end — tester RED (`78abe4b`) → implementer GREEN → internal review cleared B1/B2/S1 → fresh `clean-room-reviewer` GATE-A T-101 leg **PASS (loop 1/4)** → opened **PR #9** → CI surfaced ruff `I001`/`E702` debt on the test files → fixed mechanically → **all 10 CI stages green** → **squash-merged to `main` (`a76e3f7`)**, branch `feat/t-101-contracts` deleted.
-- **Branch now:** `feat/t-100-t-110-eventstore` — created off the freshly-merged `main`, **no commits yet** (only this handoff is uncommitted). This branch will carry ADR-0007 (T-100) then the T-110 EventStore.
+- **Task:** Built the entire M1b scoring spine on `feat/t-100-t-110-eventstore`. Sequence this session: T-100 ADR-0007 (critic loop closed) → T-110 EventStore RED→GREEN → internal + external review chain → Q-020 surfaced (event_type unhashed) → **ADR-0007 Addendum 1** decision (architect→critic, Option D) → event_type-framing RED→GREEN (`af74ea2`) → **T-111 Scorer** RED (`66ca3c0`, 26 tests) → GREEN (`c699e9a`, `core/scorer.py`) → docs reconciled (`6f06416`). Every step verified independently (re-ran suite + ruff, read the diffs). Suite **366 passed / 6 skipped**.
+- **Branch now:** `feat/t-100-t-110-eventstore`, tip `6f06416`, **all pushed, clean tree**. Carries T-100 + T-110 + T-111 (they share one PR, opened after GATE A passes). `main` is at `a76e3f7` (#9).
 - **Repo:** `/home/memez/purple-range`, remote `origin` → `https://github.com/curlyjoeyaknow/purple-range.git` (PUBLIC). `main` is protected — PR-per-task, NO direct pushes (`enforce_admins: true`), 10 required status checks.
 - **Worktree:** none. **In flight (2026-06-02):** NOTHING running; clean tree; tip `c699e9a`, all pushed. **The whole MVP scoring spine is now BUILT + GREEN on `feat/t-100-t-110-eventstore`:** T-100 ADR-0007 + Addendum 1, T-110 EventStore (reviewed internal+external), T-111 Q-020 event_type framing (`af74ea2`), and **T-111 Scorer pure core** (`core/scorer.py`: RED `66ca3c0` → GREEN `c699e9a`). Full suite **366 passed / 6 skipped**, ruff clean. **NEXT IS GATE A** — see step 2.
 
@@ -81,51 +81,71 @@ T-101's manifest-as-oracle spine is now concrete: `manifest_hash = H(canonical_j
 
 Ryzen 9800X3D 8C/16T, 60GiB RAM (~55 usable for guests), bare metal, AMD-V + `/dev/kvm`. VirtualBox 7.1.18 AND libvirt available. Vagrant 2.4.3, Docker 29.5.2, podman 4.9.3, rbenv Ruby 3.2.3, Ubuntu 24.04, kernel 6.17. `/mnt/data` 2TB NVMe, 1.7TB free.
 
-## Files modified this session (T-101 — contract spine, GATE A PASS)
+## Files modified this session (M1b spine — T-100/T-110/T-111, branch `feat/t-100-t-110-eventstore`)
 
 ```
-T-101 (PR #9, branch feat/t-101-contracts):
-  78abe4b  WIP T-101 (tester RED): lock the contract spine — failing tests for all shapes/ports/adapters
-  6a8dba3  T-101 (implementer GREEN): land the contract spine — make the RED surface pass
+Commit chain (newest first), all pushed:
+  6f06416  docs: T-111 Scorer GREEN — reconcile TODO/CHANGELOG/HANDOFF; next = GATE A
+  c699e9a  T-111(green): 3-pillar Scorer pure core (core/scorer.py)        <-- 366 green
+  66ca3c0  T-111(red): lock the 3-pillar Scorer contract (26 failing tests)
+  48d6f53  T-111(decision): resolve Q-020 — ADR-0007 Addendum 1 (Option D)
+  af74ea2  T-111(green): authenticate event_type by framing (Addendum 1)
+  bfa7ecf  T-111(red): lock event_type-framing contract
+  020dffb  docs: record T-110 external review (Q-020 Option D, opens Q-021)
+  a572c88  T-110: address internal review — connection lifecycle + read hygiene
+  204d074  T-110(green): hash-chained SQLite EventStore + upgraded InMemory fake
+  1327162  T-110(red): lock the hash-chained EventStore contract
+  e01bbbc  T-100: ADR-0007 — hash-chained SQLite EventStore
+  (+ interleaved handoff/checkpoint commits 31236fb, b3fdd57, 636e85a, b9969f1, 36ed1f2)
 
-  contracts/   13 versioned shapes + load_<shape>/SchemaError (nested) + dump() (lossless, version-first, deepcopy)
-               + SCHEMAS (stdlib-validated) + canonical_json/manifest_hash/idempotency_key/mint_correlation_id
-  ports/       8 @runtime_checkable Protocols
-  adapters/    8 fakes + REGISTRY
-  lab/cli.py   F-006 (Rng-minted run_id; uuid4 removed) + F-007 (HANDLERS dispatch table)
-  docs/OPEN-QUESTIONS.md  Q-017/Q-018/Q-019 (GATE A NITs, deferred-intentional)
-  docs/TODO.md / docs/CHANGELOG.md / docs/HANDOFF.md  reconciled to T-101-DONE / GATE A-PASS seam
+Code:
+  core/scorer.py, core/__init__.py   NEW — 3-pillar Scorer pure core (ports-clean)
+  adapters/_chain.py                 NEW — shared chain math (framed_row_hash incl. event_type, chain_batch, verify_rows)
+  adapters/event_store.py            NEW — SqliteEventStore (stdlib sqlite3, contained)
+  adapters/__init__.py               InMemoryEventStore upgraded to ADR-0007 + Addendum-1 semantics; SqliteEventStore registered
+  tests/test_event_store_t110.py, tests/conftest_t110.py   T-110 + event_type-framing tests
+  tests/test_scorer_t111.py, tests/conftest_t111.py        T-111 Scorer tests (26)
+  conftest.py                        registered the `perf` marker
+Docs:
+  docs/ADR/0007-...md (+ Addendum 1) · docs/RED-TEAM.md (T-110 internal+external, Q-020 critic) ·
+  docs/OPEN-QUESTIONS.md (Q-020 RESOLVED, Q-021 opened, Q-022 opened) · docs/TODO.md/CHANGELOG.md/HANDOFF.md reconciled
 
-Working tree: CLEAN on feat/t-101-contracts. Local: 294 passed, 6 skipped (pytest 8.3.4, throwaway venv).
-CI: PR #9 — contracts/f1-calibration/f2-mitigate GREEN; lint/unit/docs/pins/secrets/size-guard/syntax pending.
+Working tree: CLEAN, all pushed. Local: 366 passed, 6 skipped (pytest 8.3.4, /tmp/prvenv). PR not yet opened (after GATE A).
 ```
 
 ## Suggested resume command
 
 ```bash
 cd /home/memez/purple-range
-git checkout feat/t-100-t-110-eventstore   # already off merged main; this handoff is its first commit
-git log --oneline -3 main                  # expect a76e3f7 #9 (T-101 spine) · 06cb93a #8 (M0 ADRs)
+git checkout feat/t-100-t-110-eventstore   # tip 6f06416, all pushed, clean tree
+git log --oneline -3                        # expect 6f06416 · c699e9a (T-111 green) · 66ca3c0 (T-111 red)
+# sanity: rebuild the throwaway venv if gone, confirm green before doing anything
+python3 -m venv /tmp/prvenv && /tmp/prvenv/bin/pip install -q pytest==8.3.4 ruff==0.8.6
+/tmp/prvenv/bin/pytest tests/ -q            # expect 366 passed, 6 skipped
+/tmp/prvenv/bin/ruff check .                # expect clean
 
 claude
-> read docs/HANDOFF.md + docs/DELIVERY-PLAN.md + docs/TODO.md, then CONTINUE the GATE-A remainder:
-> (1) T-100: architect writes docs/ADR/0007 — EventStore hash-chain = tamper-EVIDENCE,
->     row_hash = H(prev_hash || canonical_json(event)), SQLite-over-JSONL (ADR before code, charter #6).
-> (2) T-110: tester locks the chain RED (verify_chain tamper-detect, fold/replay determinism,
->     unterminated-correlation_id ungradeable, scenario_aborted idempotent, append-latency budget),
->     then implementer builds SqliteEventStore behind the EXISTING EventStore port + InMemoryEventStore fake.
-> (3) T-111 Scorer (3-pillar, idempotency_key-keyed, per ADR-0001).
-> (4) GATE A = TWO fresh clean-room reviewers over T-101+T-110+T-111, BOTH must PASS. Then M2 → T-203 = GATE B.
-> Before every push: ruff check . AND pytest tests/ -q (throwaway venv: python3 -m venv /tmp/x &&
->   /tmp/x/bin/pip install pytest==8.3.4 ruff). Each task = branch → PR → GREEN CI → squash-merge → docs note.
-> NOTE: for specialist depth (M2 T-201 onward) run from inside purple-range or pass the forged .md as context.
+> read docs/HANDOFF.md + docs/DELIVERY-PLAN.md (§GATE A) + docs/OPEN-QUESTIONS.md (Q-022), then run GATE A:
+> The MVP spine T-101 + T-110 + T-111 is BUILT + GREEN on this branch. GATE A = TWO independent FRESH
+> clean-room-reviewer subagents (each spawned in a CLEAN context — give ONLY the artifact diff + the
+> acceptance spec, NO project lore/CLAUDE.md), BOTH must PASS:
+>   R1 (contracts/schema): version:int on every persisted shape; loaders reject malformed; canonical_json/
+>      manifest_hash/idempotency_key sound. (T-101 leg PASSed loop 1 — re-confirm with T-110/T-111 layered on.)
+>   R2 (chain integrity + scoring): EventStore framing (incl. Addendum-1 event_type), fold/replay determinism,
+>      atomic batch, NaN reject; AND Scorer honesty (3-pillar discrimination, idempotency/seed-reroll,
+>      UNGRADEABLE/aborted fold, the no-score-without-passing-verification gate).
+>   FEED BOTH the two Q-022 tightenings (oracle vocabulary vs ADR-0001; per-pillar binding not yet PROVEN by
+>      fixtures) and let the gate rule on whether they block. Budget 4; budget-exhaustion = HARD STOP, escalate.
+> On both-PASS: open ONE PR (T-100+T-110+T-111) → green CI (10 checks; ruff check . + pytest tests/ -q FIRST)
+>   → squash-merge → M1b CLOSED → M2 (T-201 LabProvider).
+> NOTE: for specialist depth (M2 T-201 onward) run from inside purple-range or pass the forged agent .md as context.
 ```
 
 ## Session metadata
 
-- **Updated:** 2026-05-31 (T-101 MERGED seam — contract spine on `main` via PR #9, all CI green; checkpoint at M1a→M1b, context guard ~74%).
-- **Branch:** `feat/t-100-t-110-eventstore` (off merged `main`; only this handoff committed). `feat/t-101-contracts` deleted post-merge.
-- **Commits on `main`:** through `a76e3f7` (#9, T-101 contract spine); `06cb93a` (#8, M0 closeout ADRs).
+- **Updated:** 2026-06-02 (M1b spine BUILT+GREEN seam — T-100/T-110/T-111 on `feat/t-100-t-110-eventstore`, 366 green; checkpoint before GATE A. Refreshed for a full-context-clear: every section reconciled to tip `6f06416`).
+- **Branch:** `feat/t-100-t-110-eventstore`, tip `6f06416`, all pushed, clean tree. Carries T-100+T-110+T-111 (one PR, after GATE A). `feat/t-101-contracts` deleted post-merge.
+- **Commits on `main`:** through `a76e3f7` (#9, T-101 contract spine); `06cb93a` (#8, M0 closeout ADRs). The M1b branch is NOT yet merged (awaiting GATE A).
 - **Remote:** `origin` → PUBLIC `github.com/curlyjoeyaknow/purple-range`; `main` solo-protected, **10 required status checks enforced**.
 - **PRs:** #1–#9 merged; none open.
 - **ADRs:** ADR-0001 (manifest-oracle) + ADR-0002 (hypervisor/LabProvider) + ADR-0005 (sequential-scope) landed; **ADR-0007 (store) = the NEXT task (T-100), precedes T-110**; ADR-0003/0004/0006 reserved/in-flight.
