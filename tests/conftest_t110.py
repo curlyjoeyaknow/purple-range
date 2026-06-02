@@ -12,9 +12,11 @@ What lives here:
     fields — values ``append`` then overwrites. They return frozen contract
     dataclass instances (what ``EventStore.append`` consumes), not raw dicts.
   * ``GENESIS_SENTINEL`` — the chosen 64-hex "no predecessor" token (ADR §1).
-  * ``framed_row_hash(prev_hash, canonical_bytes)`` — the ADR §0 FRAMED hash the
-    chain is pinned to, recomputed independently here so tests assert the store's
-    bytes against a definition that does NOT live in the store.
+  * ``framed_row_hash(prev_hash, event_type, canonical_bytes)`` — the ADR §0
+    FRAMED hash (3-field frame post-Addendum-1), recomputed independently here so
+    tests assert the store's bytes against a definition that does NOT live in the
+    store. ``event_type`` is framed in (utf-8) between ``prev_hash`` and
+    ``canonical_bytes`` (Addendum 1 / Q-020).
   * ``CONFORMANCE_FIXTURES`` — the §4a pinned evidence/value shapes (finite float,
     non-ASCII string, nested dict) the InMemory-vs-SQLite conformance suite runs
     through BOTH adapters.
@@ -38,18 +40,27 @@ GENESIS_SENTINEL = "0" * 64
 PLACEHOLDER_SEQ = 0
 
 
-def framed_row_hash(prev_hash: str, canonical_bytes: bytes) -> str:
-    """The ADR-0007 §0 FRAMED row hash, recomputed independently of the store.
+def framed_row_hash(prev_hash: str, event_type: str, canonical_bytes: bytes) -> str:
+    """The ADR-0007 §0 FRAMED row hash (3-field frame), independent of the store.
 
-        row_hash = sha256(prev_hash.encode("ascii") + b"\\x00" + canonical_bytes)
+        row_hash = sha256(
+            prev_hash.encode("ascii") + b"\\x00"
+            + event_type.encode("utf-8") + b"\\x00"   # utf-8, NOT ascii (critic 🟡-1)
+            + canonical_bytes
+        )
 
-    This is the *pinned* framing (not bare ``prev_hash + payload``) — a one-byte
-    NUL separator that cannot occur in a hex token or in ``separators=(",",":")``
-    canonical JSON. Tests use this to assert the store frames its input exactly
-    so, so a future bare-concat regression is loud, not silent.
+    This is the *pinned* framing (not bare ``prev_hash + payload``) — one-byte NUL
+    separators that cannot occur in a hex token, a snake_case ``event_type``
+    identifier, or ``separators=(",",":")`` canonical JSON, so the input stays
+    self-delimiting. Addendum 1 (Q-020) folded ``event_type`` into the frame so
+    the denormalized ``events.event_type`` column is authenticated, not smuggled.
+    Tests use this to assert the store frames its input exactly so — mirroring the
+    production ``_chain.framed_row_hash`` signature — independently of the store.
     """
     return hashlib.sha256(
-        prev_hash.encode("ascii") + b"\x00" + canonical_bytes
+        prev_hash.encode("ascii") + b"\x00"
+        + event_type.encode("utf-8") + b"\x00"
+        + canonical_bytes
     ).hexdigest()
 
 
@@ -189,4 +200,10 @@ CONFORMANCE_FIXTURES = [
     ("finite_float_evidence", lambda: submission(evidence={"score": 0.5})),
     ("non_ascii_evidence", lambda: submission(evidence={"note": "café — δ"})),
     ("nested_dict_evidence", lambda: submission(evidence={"a": {"b": [1, 2, {"c": True}]}})),
+    # MANDATED (Addendum 1, promoted per critic 🟠): a fixture whose event_type
+    # DIFFERS from the submission-rooted three above, so the conformance suite
+    # actually proves the event_type frame moves the row_hash across adapters.
+    # Without a distinct event_type every fixture shares event_type="submission"
+    # and the suite would pass even if event_type were dropped from the frame.
+    ("distinct_event_type", lambda: attack_executed()),
 ]

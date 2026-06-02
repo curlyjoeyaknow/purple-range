@@ -35,6 +35,7 @@ out-of-band-edit tamper signal the chain must catch.
 
 from __future__ import annotations
 
+import dataclasses
 import sqlite3
 import time
 
@@ -81,6 +82,24 @@ ADAPTER_KEYS = ["inmemory", "sqlite"]
 
 def make_store(key, path):
     return make_inmemory() if key == "inmemory" else make_sqlite(path)
+
+
+def read_row(path, seq):
+    """Read one persisted SQLite row BY NAME, returning (seq, event_type, payload, row_hash).
+
+    Reads columns by explicit name (not positional ``*``) so a future column
+    reorder cannot silently mis-map the fields under test. This is the out-of-band
+    boundary read the Addendum-1 positive-discrimination test re-frames against.
+    """
+    conn = sqlite3.connect(str(path))
+    try:
+        row = conn.execute(
+            "SELECT seq, event_type, payload, row_hash FROM events WHERE seq = ?",
+            (seq,),
+        ).fetchone()
+    finally:
+        conn.close()
+    return row
 
 
 def _as_row(ev) -> dict:
@@ -143,6 +162,59 @@ def test_verify_chain_detects_tampered_row(sqlite_path):
         conn.close()
 
     assert store.verify_chain() is False, "a row whose persisted bytes changed must fail verify"
+
+
+def test_verify_chain_detects_tampered_event_type(sqlite_path):
+    """Tampering ONLY the event_type column out-of-band -> verify_chain() False.
+
+    Addendum 1 / Q-020 regression guard. This is the test whose ABSENCE let the
+    blind-spot slip: it tampers a NON-``payload`` column (``event_type``, the very
+    field the T-111 reducer dispatches on) and asserts the chain catches it. Under
+    the pre-Addendum 2-field frame, ``event_type`` is unhashed and unread by
+    ``verify_chain``, so this stays True (RED). Option D folds ``event_type`` into
+    the framed hash and re-reads the stored column, making it trip.
+    """
+    store = make_sqlite(sqlite_path)
+    store.append(fx.a_few_events())
+    assert store.verify_chain() is True
+
+    conn = sqlite3.connect(str(sqlite_path))
+    try:
+        seq = conn.execute("SELECT seq FROM events ORDER BY seq LIMIT 1").fetchone()[0]
+        # Change ONLY event_type; leave payload / prev_hash / row_hash untouched.
+        conn.execute("UPDATE events SET event_type = 'LIE' WHERE seq = ?", (seq,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert store.verify_chain() is False, (
+        "tampering event_type alone must now break the chain (Q-020)"
+    )
+
+
+def test_row_hash_frames_event_type(sqlite_path):
+    """The stored event_type is provably an INPUT to the row hash (causation).
+
+    Paired with the verdict-only negative above (critic 🟠): ``is False`` alone
+    could trip for an unrelated reason (a tuple-arity bug, the seq/prev_hash check
+    firing first). This pins that ``event_type`` is THE byte that matters by
+    reproducing the stored row_hash with the stored event_type, and showing a
+    DIFFERENT event_type yields a DIFFERENT hash. seq=1 chains off the sentinel.
+    """
+    store = make_sqlite(sqlite_path)
+    store.append(fx.a_few_events())
+
+    seq, etype, payload, rh = read_row(sqlite_path, seq=1)
+
+    # Re-framing with the STORED event_type reproduces the STORED row_hash...
+    assert fx.framed_row_hash(fx.GENESIS_SENTINEL, etype, payload.encode("utf-8")) == rh, (
+        "the stored event_type must reproduce the stored row_hash when framed in"
+    )
+    # ...and a DIFFERENT event_type yields a DIFFERENT hash (control: event_type
+    # is genuinely load-bearing in the frame, not incidental).
+    assert fx.framed_row_hash(fx.GENESIS_SENTINEL, "other_type", payload.encode("utf-8")) != rh, (
+        "a different event_type must change the row_hash (it is a framed input)"
+    )
 
 
 def test_verify_chain_detects_reorder(sqlite_path):
@@ -235,16 +307,16 @@ def test_row_hash_is_framed_input(sqlite_path):
     conn = sqlite3.connect(str(sqlite_path))
     try:
         persisted = conn.execute(
-            "SELECT seq, prev_hash, payload, row_hash FROM events ORDER BY seq"
+            "SELECT seq, prev_hash, event_type, payload, row_hash FROM events ORDER BY seq"
         ).fetchall()
     finally:
         conn.close()
 
-    for seq, prev_hash, payload, row_hash in persisted:
-        expected = fx.framed_row_hash(prev_hash, payload.encode("utf-8"))
+    for seq, prev_hash, event_type, payload, row_hash in persisted:
+        expected = fx.framed_row_hash(prev_hash, event_type, payload.encode("utf-8"))
         assert row_hash == expected, (
             f"row {seq}: row_hash must be the framed sha256 of "
-            "prev_hash_bytes + 0x00 + persisted canonical bytes"
+            "prev_hash_bytes + 0x00 + event_type_bytes + 0x00 + persisted canonical bytes"
         )
     # And the returned dicts agree with the persisted row_hashes (no divergence).
     assert [r["row_hash"] for r in rows] == [p[3] for p in persisted]
@@ -330,6 +402,41 @@ def test_multi_row_append_is_atomic(adapter, sqlite_path):
     chain_len_after = len(list(store.replay_from(1)))
     assert chain_len_after == chain_len_before, "a failed batch must persist NONE of its rows"
     assert store.verify_chain() is True, "the chain must stay intact after a rolled-back batch"
+
+
+# ==========================================================================
+# Yielded read-contract key-set  [Addendum 1 §1a — the widened read surface]
+# ==========================================================================
+
+def _dataclass_field_names(event) -> set:
+    """The declared field names of a contract event dataclass."""
+    return {f.name for f in dataclasses.fields(event)}
+
+
+@pytest.mark.parametrize("adapter", ADAPTER_KEYS)
+def test_yielded_row_keyset(adapter, sqlite_path):
+    """fold/replay yield EXACTLY {dataclass fields} ∪ {row_hash, event_type}.
+
+    Addendum 1 promotes ``event_type`` from the stripped private ``_event_type``
+    to a first-class yielded key (the reducer reads ``row["event_type"]``), so the
+    §1a yielded key-set is now a real contract. Pinning it (both adapters) guards
+    the load-bearing ``public_row`` ``startswith("_")`` strip: a real event field
+    must never be silently dropped, and the new ``event_type`` key must be present.
+    Pre-Addendum the yielded dict has NO ``event_type`` key -> RED (KeyError-style
+    set mismatch). seq=1 is a ScenarioGenerated; we pin its exact shape.
+    """
+    store = make_store(adapter, sqlite_path)
+    store.append(fx.a_few_events())
+
+    row = _as_row(next(iter(store.replay_from(1))))
+    expected = _dataclass_field_names(fx.scenario_generated()) | {"row_hash", "event_type"}
+    assert set(row.keys()) == expected, (
+        "yielded row key-set must be exactly the dataclass fields plus "
+        f"{{row_hash, event_type}}; got {sorted(row.keys())}"
+    )
+    assert row["event_type"] == "scenario_generated", (
+        "the yielded event_type must be the snake_case discriminator the reducer dispatches on"
+    )
 
 
 # ==========================================================================
@@ -519,6 +626,18 @@ def test_inmemory_and_sqlite_agree_on_row_hash(fixture_id, builder, sqlite_path)
     )
     assert mem.verify_chain() == sql.verify_chain() is True, (
         f"{fixture_id}: both adapters must report the same (passing) verify_chain verdict"
+    )
+
+    # WIDENED (Addendum 1, critic 🟠): row_hash byte-identity holds "by
+    # construction" (one shared _chain.framed_row_hash) but does NOT pin that the
+    # YIELDED event_type values agree — SQLite re-sources event_type from its
+    # column, InMemory from the in-dict value. Compare the FULL yielded dict so
+    # the convergence (including event_type) is pinned, not merely asserted.
+    mem_yielded = [dict(r) for r in mem.replay_from(1)]
+    sql_yielded = [dict(r) for r in sql.replay_from(1)]
+    assert mem_yielded == sql_yielded, (
+        f"{fixture_id}: the full yielded dict (incl. event_type) must agree across "
+        "InMemory and SQLite, not just row_hash"
     )
 
 
