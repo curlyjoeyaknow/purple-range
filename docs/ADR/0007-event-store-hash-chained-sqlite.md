@@ -710,3 +710,407 @@ they are now resolved above and recorded here for traceability:
 - Status-quo skeleton generalized: [`lab/ledger.py`](../../lab/ledger.py) (T-004 append-only `Ledger`)
 - Architecture sections affected: [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) §EventStore port + adapters, §event shapes, §state model
 - Implemented & finalised by: **T-110** (`SqliteEventStore`); folded by **T-111** (Scorer); gated at **GATE A** (2× fresh clean-room, reviewer-2 owns chain/replay)
+
+---
+
+## Addendum 1 (2026-06-02) — `event_type` is authenticated by framing (Q-020)
+
+> Status: accepted
+> Date: 2026-06-02
+> Deciders: owner (memeworldorder2024), architect
+> Resolves: [`docs/OPEN-QUESTIONS.md`](../OPEN-QUESTIONS.md) **Q-020** (blocks T-111)
+> Engages: [`docs/RED-TEAM.md`](../RED-TEAM.md) 2026-05-31 internal review (🔴) + 2026-06-02 external review (🔴 + the Option-D proposal)
+> Scope: amends §0, §1, §1a, §2, §4a; supersedes nothing — additive to the chain math, chain-breaking to stored `row_hash` (no persisted data exists yet)
+
+### Context (the gap)
+
+The body of this ADR pins the chain over **`payload` bytes only**. But §5 pins the
+Scorer reducer to dispatch on `(event_type, version)`, and `event_type` is **not a
+dataclass attribute** — it is derived from the class name by
+[`_chain._event_type_of`](../../adapters/_chain.py) and stored in its **own
+`events.event_type TEXT NOT NULL` column** (DDL,
+[`event_store.py`](../../adapters/event_store.py)). That column is:
+
+- **not part of the hashed `payload`** (`chain_batch` hashes `canonical_payload(dump(event) + seq + prev_hash)`; `event_type` is computed *separately* and carried only as the private `_event_type` bookkeeping key);
+- **not re-read by `verify_chain`** (its SELECT is `seq, prev_hash, payload, row_hash`; `verify_rows` unpacks exactly that 4-tuple);
+- **not on the read surface** (`_iter_rows` reconstructs the yielded dict from `payload` + `row_hash`, so `fold`/`replay_from` never yield `event_type`).
+
+Two consequences, both confirmed against source by two independent reviewers:
+
+1. `UPDATE events SET event_type='LIE' WHERE seq=…` leaves `verify_chain()` **`True`** — a tamper blind-spot in **the exact field the reducer dispatches on**. The store's "tamper-EVIDENCE" promise (§0/§2) is therefore **false for `event_type`**: it is unverified denormalization.
+2. T-111 **cannot** dispatch on `(event_type, version)` as §5 specifies, because the discriminator is absent from the yielded dict.
+
+The current T-110 suite has **no test that tampers a non-`payload` column** — which
+is precisely how this slipped past GATE-A prep. That regression guard is mandated
+below.
+
+### Decision
+
+> **Adopt Option D: fold `event_type` into the framed row hash alongside
+> `payload` — the same way `prev_hash` already is — WITHOUT injecting it into the
+> canonical `payload` dict, AND promote `event_type` to a first-class key on the
+> persisted/yielded row so the reducer can read `row["event_type"]`.**
+
+The framed input grows by one NUL-delimited field, inserted **between** the
+`prev_hash` frame and the `canonical_bytes` frame:
+
+```
+row_hash = sha256(
+    prev_hash.encode("ascii") + b"\x00"
+    + event_type.encode("utf-8") + b"\x00"   # utf-8, NOT ascii — see critic 🟡-1
+    + canonical_bytes
+).hexdigest()
+```
+
+where `canonical_bytes` and the genesis sentinel handling are **exactly as today**
+(the genesis row still frames off `prev_hash = GENESIS_SENTINEL = "0"*64`; only the
+hash *input* grew, never the sentinel). `event_type` is snake_case from
+`_event_type_of` (`scenario_generated`, `attack_executed`, …) — no NUL byte can
+occur in it (it is derived from a Python identifier, which cannot contain NUL),
+so the input stays self-delimiting, preserving the §0 framing rationale.
+**Encoded with `utf-8`, not `ascii`** (critic 🟡-1): Python 3 permits non-ASCII
+identifiers, so a future event class like `class Café` would make
+`"café".encode("ascii")` raise `UnicodeEncodeError` inside `framed_row_hash` and
+crash the whole store — `utf-8` (the same encoding `canonical_bytes` already uses)
+removes that latent footgun for free while staying NUL-free. `verify_chain` re-reads the **stored `event_type` column bytes** and
+re-frames them, so "hash the bytes you persist; verify by re-reading them" (§0)
+now holds for **both** `payload` and `event_type`.
+
+This keeps `payload` **byte-for-byte** `canonical_json(dump(event))` — the
+denormalized column is now *authenticated*, not *smuggled into the event*.
+
+### Why D over A and C (the Q-020 alternatives)
+
+**Option A — inject an `event_type` key into the hashed payload dict** (whether via
+a new `event_type:str` contract field or a stray key patched in before
+canonicalizing). Rejected:
+
+- It **changes the canonical bytes of every event**, which forces editing the
+  **independent** conformance oracle
+  [`conftest_t110.canonical_bytes_of`](../../tests/conftest_t110.py) (it computes
+  `canonical_json(dump(event))`). That oracle's whole value is that it defines the
+  hashed bytes *at the contracts level, outside the store* — edit it to match the
+  store and `test_row_hash_is_framed_input` stops being an independent check and
+  becomes a tautology that re-asserts the store against itself.
+- It makes `payload` **no longer a faithful `canonical_json(dump(event))`**, which
+  breaks the §4a *oracle-independence* invariant: the conformance oracle
+  `conftest_t110.canonical_bytes_of` computes the hashed bytes at the **contracts
+  level, outside the store**; edit it to match A's payload and
+  `test_row_hash_is_framed_input` collapses into a tautology re-asserting the store
+  against itself. **This — not stray-key pollution — is the true discriminator** (critic
+  🟡-2). (A stray key would NOT actually break re-hydration: `contracts._load`
+  validates only against the schema's own `properties`/`required` — no
+  `additionalProperties:false` (Q-017, verified in `schemas.py`) — then filters
+  `kwargs` to dataclass `field_names`, so extras are *silently dropped*. The yielded
+  dict already carries the non-field key `row_hash` through exactly this path. So the
+  read path tolerates extras; A's real cost is the lost oracle-independence above.)
+- The contract-field variant additionally ripples to T-101 field-set assertions
+  and needs a `version` bump on all six shapes — a larger blast radius for the
+  same property.
+
+**Option C — reducer cross-checks the `event_type` column against a
+payload-derived shape**. Rejected:
+
+- It leaves the column **unauthenticated at the store layer**. `verify_chain()`
+  still returns `True` on a tampered `event_type`; integrity is only "restored" if
+  *every* consumer remembers to run the cross-check. That **pushes integrity out of
+  the store and into every reducer** — the opposite of the §3/§4a "one chain
+  discipline, both adapters route through `_chain`" posture. A second consumer
+  (the T-801 validation harness folds the same log) would have to re-implement the
+  same guard or silently trust the column.
+- It is O(shapes) per row (structural re-derivation) and reintroduces exactly the
+  "distinguish shapes structurally" fragility the internal reviewer flagged.
+
+**Why D wins:** it makes the column tamper-evident **at the store boundary**, where
+the property belongs, so `verify_chain()` becomes the single falsifiable tripwire
+for `event_type` too; it keeps the independent test oracle and the
+`payload == canonical_json(dump(event))` invariant intact; and it is localized to
+the four `_chain`/store seams below. Honesty about **D's downsides**:
+
+- **D is chain-breaking** (every `row_hash` changes) — identical migration cost to
+  A; see Migration below. Accepted because no persisted data exists.
+- **D widens the §0 framing contract** from a 2-field frame to a 3-field frame.
+  The "any change to the framing is a chain-breaking migration" rule (§0/§5) now
+  covers the `event_type` frame too. This is recorded as the new framing of record.
+- **D adds a second positional coupling** between a SELECT column list (in
+  `event_store.py`) and a tuple unpack (in `_chain.verify_rows`, a *different
+  module*). The external reviewer flagged the existing 4-tuple coupling as a
+  readability risk; growing it to a 5-tuple sharpens that risk. Mitigation is
+  mandated below (named-tuple or an inline comment pinning column↔position).
+
+### Code deltas (names + signatures; tester/implementer TDD from here)
+
+1. **`_chain.framed_row_hash`** — add an `event_type` parameter (extend the existing
+   function; do **not** fork a second function — one framing discipline, one
+   place):
+   ```python
+   def framed_row_hash(prev_hash: str, event_type: str, canonical_bytes: bytes) -> str:
+       return hashlib.sha256(
+           prev_hash.encode("ascii") + b"\x00"
+           + event_type.encode("utf-8") + b"\x00"   # utf-8, NOT ascii — see critic 🟡-1
+           + canonical_bytes
+       ).hexdigest()
+   ```
+   Genesis/sentinel behaviour is unchanged (callers still pass
+   `prev_hash=GENESIS_SENTINEL` for the first row).
+
+2. **`_chain.chain_batch`** — pass each event's `event_type` into the hash, and
+   **promote `event_type` to a first-class (non-underscore) key** on the persisted
+   row so it survives `public_row` and lands on the yielded dict:
+   - compute `event_type = _event_type_of(event)` **before** hashing (it already
+     does, just later — move it up);
+   - `row["event_type"] = event_type` on the patched dict (now a real key, hashed
+     *adjacent to* but not *inside* `payload`);
+   - `row_hash = framed_row_hash(prev_hash, event_type, payload.encode("utf-8"))`;
+   - **retire the private `_event_type` key** — `event_type` is now public and
+     first-class. Keep the private `_payload` (it stays an internal carry of the
+     canonical string the persistence layer needs and must NOT leak to callers —
+     it is redundant with the dict's content but not a declared field). The
+     persisted-row dict §1a returns is now the patched event dict **+ `row_hash`
+     + `event_type`** (a superset that now carries the discriminator). Reducers
+     read `row["event_type"]`.
+
+3. **`_chain.verify_rows`** — receive and re-frame `event_type`. New row tuple
+   shape (ordered to mirror the SELECT):
+   ```python
+   def verify_rows(rows: list[tuple[int, str, str, str, str]]) -> bool:
+       # each row: (seq, prev_hash, event_type, payload, row_hash)
+       ...
+       recomputed = framed_row_hash(row_prev_hash, event_type, payload.encode("utf-8"))
+   ```
+   Re-hashes the **stored `event_type` and `payload` bytes** (never re-derives
+   `event_type` from a reparsed object — that would re-open the blind-spot). On a
+   `False` verdict the existing first-bad-`seq` log line stands.
+
+4. **`SqliteEventStore.verify_chain`** — SELECT must now include `event_type`, in
+   the position `verify_rows` unpacks:
+   ```sql
+   SELECT seq, prev_hash, event_type, payload, row_hash FROM events ORDER BY seq
+   ```
+   **Positional-coupling note (reviewer-flagged; mitigation hardened per critic 🟡):**
+   this SELECT column order and the `verify_rows` unpack live in different modules;
+   reorder one without the other and verification silently hashes the wrong field.
+   A comment is **not** an acceptable mitigation — it does not fail a test on reorder.
+   The implementer MUST make the cross-module contract **key-based, not positional**:
+   either (a) `verify_chain` passes `verify_rows` a `list[dict]` (column→value) and
+   `verify_rows` reads `r["event_type"]`/`r["payload"]`/… by name, or (b) build a
+   `collections.namedtuple` at the SELECT and have `verify_rows` access fields by
+   name (`row.event_type`, never `row[2]`). Option (a) preferred (kills the footgun
+   structurally and matches the dict shape `_iter_rows` already yields). Non-negotiable.
+
+5. **`SqliteEventStore._iter_rows`** — must surface `event_type` on the yielded
+   dict so `fold`/`replay_from` carry the discriminator (today it SELECTs only
+   `payload, row_hash`):
+   ```sql
+   SELECT payload, row_hash, event_type FROM events {where} ORDER BY seq
+   ```
+   then `row["event_type"] = event_type` on the reconstructed dict. (The §1a
+   invariant "`fold`/`replay_from` yield the SAME shape `append` returns" forces
+   this — `append` now returns `event_type`, so the read path must too.)
+
+6. **`SqliteEventStore.append`** — no structural change: `_event_type` is gone, so
+   the INSERT reads `event_type` from the now-public key
+   (`r["event_type"]` instead of `r["_event_type"]`). The INSERT column list is
+   unchanged (the table already has `event_type`).
+
+7. **`InMemoryEventStore`** (the §4a byte-identity fake) — confirmed it routes
+   **entirely** through `_chain`: `append`→`chain_batch`, `verify_chain`→`verify_rows`,
+   `public_row` for reads. The only edits are the `verify_chain` tuple it builds —
+   it must now assemble `(r["seq"], r["prev_hash"], r["event_type"], r["_payload"], r["row_hash"])`
+   to match the new `verify_rows` arity — and dropping the `_event_type` reference.
+   Because both adapters call the same `_chain.framed_row_hash`, byte-identity (§4a)
+   holds **by construction** — no separate fake framing to keep in sync.
+
+8. **`public_row` underscore-strip — LOAD-BEARING for this change, not a nit**
+   (critic 🟡): D moves `event_type` from the stripped `_event_type` to the kept
+   `event_type`, so the §1a yielded **key-set** is now a real contract
+   (`{dataclass fields} ∪ {row_hash, event_type}`). The `startswith("_")` strip
+   means any *event field* ever named with a leading underscore would be silently
+   dropped from what reducers see — the exact bug-class this addendum fixes for
+   `event_type`. The implementer MUST pin the yielded key-set with
+   `test_yielded_row_keyset` (see Mandated tests below) so the strip can't silently
+   drop a real field. **Genuine nits to fold in while these lines are open** (cheap,
+   same lines, non-blocking): rewrite the garbled `_event_type_of` docstring; default
+   `fold`'s `where` to `""` instead of `"WHERE 1=1"`; soften the `close()` "Idempotent"
+   docstring.
+
+### Conformance oracle & fixtures — what changes, what does NOT
+
+- **`conftest_t110.canonical_bytes_of` — UNCHANGED.** Under D, `payload`/canonical
+  bytes are identical to today (`event_type` never enters the dict). The oracle
+  stays a faithful, store-independent definition of the hashed `payload` bytes.
+  This is the central reason D beats A.
+- **`conftest_t110.framed_row_hash` (the independent test helper) — CHANGES**, in
+  lockstep with the production signature: it gains the `event_type` param so
+  `test_row_hash_is_framed_input` re-frames `(prev_hash, event_type, canonical_bytes)`
+  and still checks the store against an independent definition.
+- **`CONFORMANCE_FIXTURES` — UNCHANGED set.** The three evidence shapes (finite
+  float, non-ASCII, nested dict) all ride `submission`, so they all carry the same
+  `event_type="submission"`. The fixtures still assert **byte-identical `row_hash`**
+  across InMemory/SQLite — that assertion's *expected values* are re-baselined
+  (every `row_hash` grew different bytes) but the fixture **definitions** do not
+  change. **MANDATED (was "recommended"; promoted per critic 🟠):** add at least one
+  fixture whose `event_type` **differs** from the rest, so the conformance suite
+  actually proves the `event_type` frame moves the hash across adapters — without it,
+  every fixture shares `event_type="submission"` and the suite would pass even if
+  `event_type` were dropped from the frame entirely.
+- **§4a conformance assertion — WIDEN (critic 🟠).** Today it compares `row_hash` +
+  `verify_chain` verdict across InMemory/SQLite. It must now also compare the **full
+  yielded dict** (including `event_type`) across the two adapters — because under D,
+  SQLite re-sources `event_type` from its **column** while InMemory keeps it in the
+  in-dict value; `row_hash` byte-identity holds "by construction" but does NOT pin
+  that the *yielded* `event_type` values agree. Comparing the full dict pins the
+  convergence the addendum is otherwise only asserting.
+- **Re-baseline scope for the tester:** any test that pins a **literal** `row_hash`
+  or compares against `framed_row_hash(...)` must be recomputed. Tests that assert
+  *relationships* (`verify_chain() is True/False`, reorder/delete/insert, returned
+  `row_hash` == persisted `row_hash`, fold reproduces scoreboard) are
+  framing-agnostic and need no value edit.
+
+### Migration
+
+This is a **chain-breaking change**: every `row_hash` is recomputed over a larger
+input, so every stored `row_hash` changes. Per §0/§5 a framing change is a
+chain-breaking migration. **Posture: no migration — re-create.** The store is
+**pre-MVP with zero persisted production data** (T-110 just landed; T-111 has not
+run; no scoring log exists). There is nothing to re-fold/re-chain: existing dev/test
+SQLite files are disposable and recreated by the test harness.
+
+**`version` bumps required: NONE.** D adds **no field to any contract dataclass**
+(`event_type` was never a contract field — it is store-derived), so none of the six
+event `version:int` values change, and `contracts/schemas.py` is untouched. `payload`
+bytes are identical, so historical canonical serialization is unchanged. The change
+is confined to the chain-math/store layer. (Contrast: Option A's contract-field
+variant *would* have forced a `version` bump on all six shapes.) The framing of
+record in §0 is hereby updated to the 3-field frame for all future rows.
+
+### Mandated negative test (the regression guard)
+
+```python
+def test_verify_chain_detects_tampered_event_type(sqlite_path):
+    """Tampering ONLY the event_type column out-of-band -> verify_chain() False."""
+    store = make_sqlite(sqlite_path)
+    store.append(fx.a_few_events())
+    assert store.verify_chain() is True
+    conn = sqlite3.connect(str(sqlite_path))
+    try:
+        seq = conn.execute("SELECT seq FROM events ORDER BY seq LIMIT 1").fetchone()[0]
+        # change ONLY event_type; leave payload/prev_hash/row_hash untouched
+        conn.execute("UPDATE events SET event_type='LIE' WHERE seq=?", (seq,))
+        conn.commit()
+    finally:
+        conn.close()
+    assert store.verify_chain() is False, \
+        "tampering event_type alone must now break the chain (Q-020)"
+```
+
+This is the test whose **absence** let Q-020 slip — it tampers a **non-`payload`
+column** and asserts the chain catches it. It MUST be written first (failing
+against the current `event_type`-unframed code), then made to pass by the deltas
+above. It belongs in the SQLite-specific tamper block alongside
+`test_verify_chain_detects_tampered_row`.
+
+**But the verdict-only assertion can pass for the wrong reason** (critic 🟠: any
+unrelated always-on mismatch — e.g. a tuple-arity bug, or the `seq`/`prev_hash`
+check tripping first — also yields `False`, so `is False` does not prove
+`event_type` is the byte that matters). It MUST be paired with a **positive
+discrimination** test that pins causation:
+
+```python
+def test_row_hash_frames_event_type(sqlite_path, fx):
+    """The stored event_type is provably an input to the row hash."""
+    store = make_sqlite(sqlite_path); store.append(fx.a_few_events())
+    seq, etype, payload, rh = read_row(sqlite_path, seq=1)  # by-name read
+    # re-framing with the STORED event_type reproduces the STORED row_hash...
+    assert _chain.framed_row_hash(GENESIS_SENTINEL, etype, payload.encode()) == rh
+    # ...and a DIFFERENT event_type yields a DIFFERENT hash (control).
+    assert _chain.framed_row_hash(GENESIS_SENTINEL, "other_type", payload.encode()) != rh
+```
+
+And the §1a **read-contract** is now materially wider (`event_type` is a first-class
+yielded key), so pin the key-set too (critic 🟡; this is the charter-#2 "version
+surface" for a non-dataclass persisted shape):
+
+```python
+def test_yielded_row_keyset(store, fx):
+    """fold/replay yield exactly {dataclass fields} ∪ {row_hash, event_type} — both adapters."""
+    store.append(fx.a_few_events())
+    row = next(store.replay_from(1))
+    expected = dataclass_field_names(fx.scenario_generated()) | {"row_hash", "event_type"}
+    assert set(row.keys()) == expected
+```
+
+All three (negative + positive-discrimination + key-set) are **mandated**, RED-first.
+
+### Interaction with Q-021 (tip-read race) — recommendation: **split (default), don't ride along** (revised per critic 🟡)
+
+The implementer *does* touch the `append` read→write path Q-021 concerns, so the
+moment is cheap. **But the default is now SPLIT, not ride-along**: Q-020 is an
+**integrity** change on the T-111 critical path; Q-021 is a **concurrency** change
+that is explicitly **non-blocking** (single-writer scope; a duplicate `seq` raises
+`IntegrityError` → rollback, so integrity is never at risk — only spurious failures
+under a hypothetical second writer). Bundling them makes GATE-A's clean-room reviewer
+assess two distinct risk surfaces in one diff, and a flaw in the *non-blocking*
+concurrency hardening could stall the *blocking* integrity fix that actually unblocks
+T-111. **Default: land Q-020 alone; Q-021 (`BEGIN IMMEDIATE` + tip-read-inside-txn)
+is a separate follow-up** — pick it up only if it falls out trivially and does not
+enlarge the Q-020 review surface. This addendum does **not** decide Q-021; it records
+that coupling a blocking change to a non-blocking one is the wrong default.
+
+### Consequences
+
+- **Becomes easy:** `verify_chain()` now trips on any **isolated** out-of-band edit
+  of `event_type` (as it already does for `payload`); the reducer dispatches on a
+  discriminator that is on the read surface; the conformance oracle and the
+  `payload == canonical_json(dump(event))` invariant survive untouched.
+- **Scope of the guarantee (precise — critic 🟠, do not overstate):** D authenticates
+  the **immutability** of the stored `event_type`, **not** its **correspondence to the
+  payload it labels.** `event_type` is derived once at write time by `_event_type_of`
+  and trusted thereafter; the chain never cross-checks that the stored `event_type`
+  matches the *shape* of its `payload`. A privileged attacker who rewrites **both** the
+  `event_type` column **and** re-derives a consistent `row_hash` (the frame is public —
+  this is tamper-EVIDENCE, not tamper-RESISTANCE, per the ADR title) produces a row
+  whose `event_type` lies about a differently-shaped `payload`, and `verify_chain()`
+  returns True. This is **within the declared threat model** (privileged host attacker
+  is out of scope, §0/title) — but T-111's `(event_type, version)` dispatch may trust
+  only "`event_type` was not edited in isolation," **not** "`event_type` provably
+  matches the payload." If T-111 needs the latter, that is Option-C territory (a reducer
+  cross-check of column vs payload-derived shape) and is hereby recorded as a **residual,
+  NOT solved by D.**
+- **Becomes hard:** the §0 framing is now a 3-field contract — one more thing a
+  future hash-encoding change breaks (and must break loudly); the SELECT↔`verify_rows`
+  coupling grew by one column and must be made **key-based** (not positional).
+- **We owe later:** the key-based guard on the SELECT↔`verify_rows` coupling (mandated
+  above, not optional); a Q-021 disposition (now **split-by-default**, follow-up); and
+  the `event_type`↔`payload` correspondence residual above if T-111's dispatch needs it.
+
+### Critic pass — DONE (2026-06-02), all concerns addressed above
+
+The `critic` ran against this addendum (full review in [`docs/RED-TEAM.md`](../RED-TEAM.md)
+2026-06-02). **Verdict: the core decision (D over A/C) is sound** — the critic tried the
+three nominated objections and they FAILED on the evidence:
+
+1. **Collision/framing soundness — sound.** The NUL-delimited 3-field frame is
+   self-delimiting and *strictly stronger* than the old 2-field frame; `event_type`
+   (identifier-derived) and `canonical_bytes` (`json.dumps` escapes NUL as ` `)
+   are both provably NUL-free. The one residual — `.encode("ascii")` could raise on a
+   future non-ASCII class name — is **fixed above** (→ `utf-8`).
+2. **"D moves A's stray-key defect onto the yielded dict" — FAILS.** Verified in
+   `schemas.py`: `_validate` checks only the schema's own `properties`/`required` (no
+   `additionalProperties:false`, Q-017) and `_load` filters `kwargs` to dataclass
+   `field_names` — extras are silently dropped. The yielded dict already carries the
+   non-field key `row_hash` through this exact path. So the read path is safe; A's real
+   cost is lost oracle-independence (rationale **corrected above**).
+3. **"No version bump" — airtight for schemas**, with the honest caveat (now pinned by
+   `test_yielded_row_keyset`) that the §1a yielded-dict read-contract widens.
+
+The critic's **8 fixable findings (🟠×3, 🟡×5)** are each addressed inline above:
+ascii→utf-8 encode; A-rationale corrected to oracle-independence; key-based (not
+positional, not comment) SELECT↔`verify_rows` coupling; `public_row` underscore-strip
+elevated to load-bearing + `test_yielded_row_keyset`; distinct-`event_type` conformance
+fixture promoted to mandated + §4a widened to compare full yielded dicts;
+negative-test paired with positive-discrimination (`test_row_hash_frames_event_type`);
+Q-021 ride-along flipped to split-by-default; Consequences corrected to scope the
+guarantee (immutability, **not** `event_type`↔`payload` correspondence — recorded as a
+residual). **This addendum is the binding T-111 spec; the tester/implementer work from
+the Code-deltas + Mandated-tests sections above.**

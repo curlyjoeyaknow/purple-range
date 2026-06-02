@@ -11,6 +11,29 @@ touch this file are blocked by CI (`.github/workflows/ci.yml` →
 
 ## [Unreleased]
 
+### Decided (specs/ADRs — no code yet)
+- **ADR-0007 Addendum 1 — `event_type` is authenticated by framing (resolves Q-020).**
+  T-110's review chain found the `events.event_type` column was hashed by neither
+  `payload` nor `verify_chain`, so an out-of-band `UPDATE … SET event_type=…` left
+  `verify_chain()` returning True — a tamper blind-spot in the field ADR §5 says the
+  Scorer reducer dispatches on. Resolved via the mandatory `architect`→`critic` loop at
+  the top of T-111: **Option D** — fold `event_type` into the framed row hash alongside
+  `payload` (`sha256(prev_hash ‖ \x00 ‖ event_type ‖ \x00 ‖ canonical_bytes)`, utf-8) and
+  promote it to a first-class yielded key, **without** putting it in the canonical
+  `payload` (so `payload == canonical_json(dump(event))` and the independent conformance
+  oracle survive). Critic: core sound (3 objections failed on evidence), 8 fixable
+  findings all addressed before binding. Chain-breaking (re-create; **no `version` bump**
+  — `event_type` was never a contract field). Mandates a negative + positive-discrimination
+  + key-set test, RED-first. Residual: D authenticates `event_type` *immutability*, not
+  its *correspondence to the payload it labels*. See
+  [`docs/ADR/0007-event-store-hash-chained-sqlite.md`](ADR/0007-event-store-hash-chained-sqlite.md)
+  Addendum 1, [`docs/RED-TEAM.md`](RED-TEAM.md) 2026-06-02, [`docs/OPEN-QUESTIONS.md`](OPEN-QUESTIONS.md) Q-020.
+- T-110 review chain closed (internal `reviewer` + external `external-reviewer`): chain
+  integrity verified sound under adversarial probes; opened **Q-021** (the `append`
+  tip-read sits outside its transaction — safe by the single-writer scope, PK protects
+  integrity, exposure is spurious failures only; harden with `BEGIN IMMEDIATE` or document
+  — non-blocking, split-by-default follow-up).
+
 ### Added
 - T-110: **Hash-chained SQLite EventStore (the scoring spine's persistence)** —
   `adapters/event_store.py` (`SqliteEventStore`, stdlib `sqlite3` only, table

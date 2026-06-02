@@ -68,6 +68,30 @@ F1/F2/F3 below closed).
 
 ---
 
+## 2026-06-02 — `/critique` on ADR-0007 Addendum 1 (Option D resolves Q-020)
+
+> Target: the just-written ADR-0007 "Addendum 1" (authenticate `event_type` by framing it into the row hash). Mandatory pre-decision critique loop (charter #9), run by `architect` → `critic` at the top of T-111 before any reducer code.
+> Verdict: **core decision (D over A/C) SOUND** — the three nominated objections all FAILED on the evidence; **8 fixable findings (🟠×3, 🟡×5), none fatal**, all addressed in the addendum before it became binding. pm independently re-verified the two linchpin claims against source (`schemas.py` loader drops extras; `framed_row_hash` current signature).
+
+**Objections tried that FAILED (why D is sound):**
+- **Framing/collision — sound.** NUL-delimited 3-field frame `prev_hash \x00 event_type \x00 canonical_bytes` is self-delimiting and *strictly stronger* than the old 2-field frame; `event_type` (identifier-derived) and `canonical_bytes` (`json.dumps` escapes NUL) are provably NUL-free. No length-extension angle (hash compared for equality, never used as a suffix-MAC).
+- **"D re-introduces A's stray-key defect on the read path" (the nominated sharpest) — FAILED.** Verified in `contracts/schemas.py`: `_validate` iterates only the schema's `properties`/`required` (no `additionalProperties:false`, per Q-017) and `_load` filters `kwargs` to dataclass `field_names` — extras silently dropped. The yielded dict already carries the non-field key `row_hash` through this exact path. So promoting `event_type` to a yielded key is safe. **Bonus finding:** the addendum's *original* A-rejection prose over-claimed (it blamed stray-key re-hydration); the real discriminator is **oracle-independence** (A changes `canonical_bytes`, forcing edits to the independent `conftest_t110.canonical_bytes_of` and collapsing `test_row_hash_is_framed_input` into a tautology). Rationale corrected.
+
+**Findings, each addressed in the addendum:**
+- 🟡-1 `event_type.encode("ascii")` can raise `UnicodeEncodeError` on a future non-ASCII class name (Python 3 permits Unicode identifiers) → **changed pinned signature to `utf-8`** (same encoding as `canonical_bytes`, still NUL-free).
+- 🟡-2 A-rejection rationale mis-argued → **corrected to oracle-independence** (stray keys are dropped by design).
+- 🟡-3 §1a yielded-dict read-contract widens (gains `event_type` key) with no version handle → **mandated `test_yielded_row_keyset`** pinning `{fields} ∪ {row_hash, event_type}` (the charter-#2 "version surface" for a non-dataclass persisted shape).
+- 🟠-4 the lone negative test asserts the *verdict* not the *cause* (can pass for the wrong reason) → **paired with positive-discrimination `test_row_hash_frames_event_type`** (stored `event_type` reproduces stored `row_hash`; a different `event_type` does not).
+- 🟠-5 `event_type` authenticated as *bytes* (immutability) but NOT for *correspondence to the payload it labels* → **Consequences corrected** to scope the guarantee precisely; correspondence recorded as an explicit **residual** (Option-C territory if T-111 dispatch needs it). Within the declared tamper-evidence (not -resistance) threat model.
+- 🟠-6 §4a conformance compares only `row_hash`+verdict, not the yielded `event_type` (SQLite re-sources it from the column, InMemory from the dict) → **widened §4a to compare full yielded dicts** + **promoted the distinct-`event_type` fixture from recommended to mandated** (else every fixture shares `event_type="submission"` and the suite passes even if `event_type` were dropped from the frame).
+- 🟡-7 the 5-tuple SELECT↔`verify_rows` positional coupling "add a comment" mitigation is hand-waving → **mandated key-based** (`list[dict]` by name, preferred) — a comment doesn't fail a test on reorder.
+- 🟡-8 `public_row` `startswith("_")` strip is load-bearing (it's exactly the drop-a-real-field bug-class this change fixes) → **elevated from nit**, pinned by `test_yielded_row_keyset`.
+- 🟡-9 Q-021 ride-along couples a non-blocking concurrency fix to the blocking integrity fix → **flipped default to split**; Q-021 is a separate follow-up.
+
+**Disposition:** Addendum revised in place; it is now the **binding T-111 spec**. Q-020 RESOLVED (Option D). Next: `tester` writes the mandated tests RED-first, then `implementer`.
+
+---
+
 ## 2026-05-30 — `/critique` on the planning bootstrap (PRD + ARCHITECTURE + ADR-0001)
 
 > Target: `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/ADR/0001-manifest-oracle-event-sourced-scoring.md`

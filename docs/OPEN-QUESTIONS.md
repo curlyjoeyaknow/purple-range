@@ -410,11 +410,23 @@ Unresolved decisions that block, slow, or shape the work. Maintained by the
   now; add a signature gate (or the static-type CI stage) before stream fan-out
   if drift bites.
 
-### Q-020 — How does the Scorer reducer get each event's type discriminator, tamper-evidently? [BLOCKS T-111]
+### Q-020 — How does the Scorer reducer get each event's type discriminator, tamper-evidently? [✅ RESOLVED 2026-06-02 → ADR-0007 Addendum 1, Option D]
 
+- **✅ RESOLVED 2026-06-02 (Option D — frame `event_type` into the row hash):** decided
+  via the mandatory `architect` → `critic` loop at the top of T-111 and recorded in
+  **[ADR-0007 Addendum 1](ADR/0007-event-store-hash-chained-sqlite.md)**. `event_type` is
+  folded into the framed row hash alongside `payload`
+  (`sha256(prev_hash \x00 event_type \x00 canonical_bytes)`, utf-8) and promoted to a
+  first-class yielded key — tamper-evident, on the read surface, and `payload` stays
+  byte-for-byte `canonical_json(dump(event))` so the independent conformance oracle
+  survives. Critic verdict: core sound (3 objections failed on evidence); 8 fixable
+  findings all addressed before binding (see [`docs/RED-TEAM.md`](RED-TEAM.md) 2026-06-02).
+  **Residual:** D authenticates `event_type` *immutability*, not its *correspondence to
+  the payload it labels* (Option-C territory if T-111 dispatch needs it). **Next:**
+  `tester` writes the mandated tests (negative + positive-discrimination + key-set) RED-first.
 - **Raised:** 2026-05-31 (T-110 internal `reviewer`, 🔴 — see [`docs/RED-TEAM.md`](RED-TEAM.md) 2026-05-31)
 - **Type:** technical / contract
-- **Blocks:** **T-111 (Scorer) — must resolve as its FIRST move, before any reducer code.** Also inside GATE A scope.
+- **Blocks:** **T-111 (Scorer) — must resolve as its FIRST move, before any reducer code.** Also inside GATE A scope. *(Now unblocked.)*
 - **What we know:**
   - ADR-0007 §5 pins the reducer to dispatch on `(event_type, version)`.
   - T-110 stores `event_type` as a `events` column derived from the dataclass name,
