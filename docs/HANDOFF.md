@@ -1,4 +1,46 @@
-# HANDOFF — 2026-06-02 (T-101 MERGED #9; M1b spine T-100/T-110/T-111 ALL BUILT+GREEN [366 passed], branch tip 6f06416; NEXT: GATE A — the spine gate)
+# HANDOFF — 2026-06-03 (⚡ GATE A PASSED — spine merge-ready; parallel Wave-1 fan-out done w/ a worktree-base anomaly to clean up; READ THE LIVE-STATE BLOCK FIRST)
+
+---
+
+## ⚡ LIVE STATE 2026-06-03 (read this first — supersedes the 2026-06-02 sections below)
+
+### GATE A = CLOSED, both fresh clean-room reviewers PASS (2 of 4 loop budget)
+- **R2 (chain integrity + scorer honesty): PASS** loop 1 — C1–C5 + S1–S5 held under direct row-tamper, forced batch rollback, NaN/wrong-pillar/seed-reroll probes.
+- **R1 (contracts/schema): FAIL loop 1 → FIX → PASS loop 2.** Loop-1 found ONE blocker: `canonical_json` omitted `allow_nan=False`, so a NaN/Inf (e.g. via `manifest_hash`) serialized to the non-portable `NaN`/`Infinity` token. **Fixed in commit `435b918`** (`allow_nan=False` + 6 regression tests). R1 loop-2 re-reviewed `435b918` → PASS, no blockers.
+- **Q-022 #1 (oracle vocab {manifest,ground_truth,reattack} vs pillar {attack,detect,mitigate}) and #2 (generic-"manifest" oracle escape hatch untested): BOTH ruled non-blocking.** #1 must stay deferred (adding the enum NOW would reject the pillar names the graders emit → would break the spine). #2 + the "empty correlation_id awards score" NIT → close as a small scorer-binding follow-up (add `test_verification_for_wrong_pillar_does_not_license_award`, drop `_GENERIC_ORACLE`, guard empty corr-id) **before any new grader merges**.
+
+### Spine state — MERGE-READY but on a MISNAMED branch
+- **`435b918` = the full M1b spine (T-100 ADR-0007 + T-110 EventStore + T-111 Scorer) + the GATE-A allow_nan fix. 372 passed / 6 skipped, ruff clean.** This is the artifact to merge to `main`.
+- ⚠️ **Branch anomaly:** `435b918` currently sits on a misnamed local branch **`feat/t-401-threat-actor-skeleton`** (it should be `feat/t-100-t-110-eventstore`). The real `feat/t-100-t-110-eventstore` is still at the pre-fix `eed5e34` (origin-tracked). `eed5e34` is an ancestor of `435b918`, so the fix: `git branch -f feat/t-100-t-110-eventstore 435b918 && git checkout feat/t-100-t-110-eventstore && git branch -D feat/t-401-threat-actor-skeleton`, then push (FF over origin's eed5e34) and open the spine PR.
+- ⛔ **PERMISSION FRICTION:** this session's permission mode **DENIED** Bash git state-changes (`git branch -f`/`checkout`/`branch -D`) and `| tail`/`| head` pipes. The branch surgery above is NOT yet done. Resume needs either Bash-git permission granted, or the human runs the ops via `! <cmd>`.
+
+### ⚠️ WORKTREE-BASE ANOMALY (the load-bearing gotcha for integration)
+Wave-1 builders launched with `isolation: worktree` did **not** all base off the spine HEAD. Two groups:
+- **Based on the SCRUB commit `3150218` "Remove internal docs and AI tooling; scrub internal-doc references"** (parent = the T-101-only squash `82e1c5e`; **this commit DELETES `docs/`** and predates the M1b spine — 293 tests, no `core/scorer.py`). **DO NOT `git merge` these branches — the merge re-applies the docs deletion.** Their work is purely ADDITIVE new files → **salvage the files only** onto post-merge `main`:
+  - **T-401 ThreatActor skeleton — DONE/GREEN** (`worktree-agent-a19b60c0f270ad888`, GREEN `d81dbd1`, RED `6255a01`). Salvage: `adapters/threat_actor/__init__.py` (NativeRunner + AtomicRedTeam + `_BoundedRunner` + `LAB_CIDR` 192.168.56.0/24 refusal + AttackEventLog) + `tests/test_threat_actor_t401.py` (32 tests) + `tests/conftest_t401.py`; re-apply `REGISTRY["ThreatActor"] += [NativeRunner, AtomicRedTeam]` + its import in `adapters/__init__.py`.
+  - **T-502a IsolationProvider nft core — DONE/GREEN** (`worktree-agent-ab798f808d99ae3a2`, GREEN `76e20f0`, RED `3960dc4`). Salvage: `adapters/isolation/__init__.py` (HostNftablesTripwire ruleset emitter v4+v6 + docker-bridge + DNS-block; fail-closed `verify_contained()`; guest-probe corroboration-only; base-snapshot gate; emits ruleset only, never touches host `nft`) + `tests/test_isolation_t502a.py` (21 tests); re-apply `REGISTRY["IsolationProvider"] += [HostNftablesTripwire]` + import.
+  - **architect ADRs T-301/T-501/T-701 (`worktree-agent-ab1e2a4eea5694f85` @ `3150218`) — DONE, USABLE, but UNCOMMITTED** (the architect agent type has no Bash → could not `git commit`; files written to the worktree). Salvage the THREE NEW ADR files cleanly: `docs/ADR/0004-security-onion-primary-siem.md`, `docs/ADR/0006-containment-authority-host-side-continuous.md`, `docs/ADR/0003-secgen-containerized-toolchain.md` (port/contract fidelity self-verified; house format matches 0002/0005/0007; Q-002/Q-011/Q-012 tagged). ⚠️ **DO NOT copy its `docs/ARCHITECTURE.md` + `docs/CHANGELOG.md` wholesale** — the scrubbed base had neither, so it REPRODUCED them in full from main; **hand-apply only the intended edits** (Open-ADR map: 0001 spine·0002 hypervisor·0003 SecGen·0004 SO·0005 seq-scope·0006 containment·0007 store; Telemetry/IsolationProvider/EventStore headers → ADR-0004/0006/0007; one reconciliation it flagged: `disarm_tripwire -> IsolationReport`). **Route the 3 ADRs through the real `critic` before finalizing** (charter #9). Worktree path: `/home/memez/purple-range/.claude/worktrees/agent-ab1e2a4eea5694f85/docs/`.
+- **Based on the CORRECT spine `6f06416`** (clean ancestry): **T-304 F1 calibration (`feat/t-304-f1-calibration` @ `071ced8`, RED locked)** — rebase/integrate normally (shares ancestor with the spine). Result may still be in-flight at checkpoint.
+- **T-103 deps (`a1d5b883`, no commit) — N/A finding:** the project is deliberately **stdlib-only**; there is NO `pyproject.toml`/lockfile anywhere. Python deps are pinned in the CI `env:` block (pytest/ruff/yamllint), not a manifest. Re-scope T-103: "stdlib-only; deps pinned in CI env, not pyproject" (1-line ADR/doc); the M1a "no shared dep-file edits" intent is already satisfied.
+
+### Pre-existing test-failure red herring
+`tests/test_fetch_deps.py::test_pending_pin_refuses_and_never_fetches` fails **only on the scrubbed base `3150218`** (the "Q-011" ref was scrubbed from the `PendingPinError` message). On the **real spine `435b918` it PASSES** (372/0-fail). So it is an artifact of the scrub, NOT a spine regression — ignore it for the salvaged files; do not "fix" it on the spine.
+
+### NEXT CONCRETE STEPS (in order)
+1. **Unblock git** (permission or human-runs), then **stabilize spine branch → push → open spine PR (T-100+T-110+T-111) → green CI (10 checks; run `ruff check .` + `pytest tests/ -q` first) → squash-merge to `main`.** GATE A passed; the spine is merge-ready.
+2. **Salvage T-401 + T-502a net-new files** onto post-merge `main` (NOT their scrub branches); re-apply the 2 REGISTRY lines; suite green; PR each (clean additive diffs once spine is in main).
+3. **Integrate T-304** (clean branch) normally.
+4. **Re-run architect** for ADR-0004/0006/0003 on the correct base.
+5. **Wave 2 dependents:** T-402 (after T-401), T-503a (after T-502a).
+6. **Close the Q-022#2 footgun + empty-corr-id guard** as a small scorer-binding follow-up before the next grader merges.
+
+### Background agents possibly still running at checkpoint
+- `ab1e2a4eea5694f85` (architect ADRs — expected to have struggled on the scrubbed base).
+- `ab61585bf16132340` (T-304 — on correct base, expected OK).
+They are harness-tracked and will re-invoke on completion (lossless across compact). All other Wave-1 agents have reported.
+
+---
+
 
 > Written by `docs-keeper`. Resume `/deliver` from "Next concrete step" with zero momentum lost.
 
