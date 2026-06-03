@@ -29,8 +29,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 
 import conftest_t101 as fx
+import pytest
 
 import adapters
 
@@ -68,6 +70,27 @@ def test_canonical_json_is_sorted_and_whitespace_free():
     s = contracts.canonical_json({"b": 1, "a": 2})
     assert s == json.dumps({"a": 2, "b": 1}, sort_keys=True, separators=(",", ":"))
     assert " " not in s and "\n" not in s
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_canonical_json_rejects_non_finite_floats(bad):
+    """Non-finite floats must fail closed (allow_nan=False), not serialize to the
+    non-portable NaN/Infinity tokens that a strict/cross-language verifier rejects.
+    GATE-A R1 BLOCKER: the manifest_hash determinism/portability contract depends
+    on this — a NaN/Inf from a buggy/hostile generator must never poison a hash."""
+    assert not math.isfinite(bad)
+    with pytest.raises(ValueError):
+        contracts.canonical_json({"x": bad})
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_manifest_hash_rejects_non_finite_floats_in_payload(bad):
+    """The non-finite rejection holds through the manifest_hash path (the most
+    load-bearing determinism primitive), not just the raw canonical_json call."""
+    vu = fx.vuln()
+    vu["weight"] = bad  # a non-finite value smuggled into an unconstrained inner field
+    with pytest.raises(ValueError):
+        contracts.manifest_hash(fx.victim(), [vu], 1234)
 
 
 def test_manifest_hash_changes_when_any_input_changes():

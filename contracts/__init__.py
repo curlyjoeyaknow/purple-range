@@ -56,8 +56,17 @@ def canonical_json(obj: Any) -> str:
     Sorted keys + no whitespace => stable across dict-ordering and re-encoding,
     so the same logical content always produces the same bytes (and thus the
     same hash).
+
+    ``allow_nan=False`` rejects non-finite floats (NaN/Infinity) at the
+    canonicalization boundary: the JSON spec has no portable encoding for them,
+    so Python's default ``NaN``/``Infinity`` tokens would produce canonical
+    bytes that a strict or cross-language verifier rejects — silently breaking
+    the "canonical, portable, stable" guarantee that ``manifest_hash`` and the
+    hash-chain depend on. Fail closed instead: a non-finite value (e.g. from a
+    buggy/hostile generator flowing through ``manifest_hash``) raises ``ValueError``
+    here rather than poisoning a hash downstream.
     """
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"))
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
 def manifest_hash(victim: dict, vulns: list, seed: int) -> str:
